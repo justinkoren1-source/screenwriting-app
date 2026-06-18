@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getProjects, createProject, deleteProject } from '@/lib/storage'
+import { getProjects, createProject, deleteProject, saveProject } from '@/lib/storage'
 import type { Project } from '@/lib/types'
 
 export default function HomePage() {
@@ -10,6 +10,9 @@ export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [showModal, setShowModal] = useState(false)
   const [projectName, setProjectName] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const all = getProjects().sort(
@@ -23,6 +26,28 @@ export default function HomePage() {
     if (!name) return
     const project = createProject(name)
     router.push(`/script/${project.id}`)
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (fileInputRef.current) fileInputRef.current.value = ''
+
+    setImporting(true)
+    setImportError(null)
+
+    try {
+      const { parsePdfToBlocks, titleFromFilename } = await import('@/lib/pdfParser')
+      const blocks = await parsePdfToBlocks(file)
+      const name = titleFromFilename(file.name)
+      const project = createProject(name)
+      saveProject({ ...project, blocks })
+      router.push(`/script/${project.id}`)
+    } catch (err) {
+      console.error('PDF import error:', err)
+      setImportError('Could not parse this PDF. Make sure it is a text-based (not scanned) screenplay.')
+      setImporting(false)
+    }
   }
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
@@ -40,14 +65,50 @@ export default function HomePage() {
             <h1 className="text-xl font-semibold text-neutral-900">Screenplay</h1>
             <p className="text-xs text-neutral-400 mt-0.5">Industry-standard format</p>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-neutral-900 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 transition-colors"
-          >
-            + New Script
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="text-neutral-600 border border-neutral-300 text-sm px-4 py-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              {importing ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Importing…
+                </>
+              ) : (
+                'Upload PDF'
+              )}
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="bg-neutral-900 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 transition-colors"
+            >
+              + New Script
+            </button>
+          </div>
         </div>
       </header>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        className="hidden"
+        onChange={handleUpload}
+      />
+
+      {importError && (
+        <div className="max-w-2xl mx-auto px-8 pt-4">
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
+            <span>{importError}</span>
+            <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-600 ml-4">✕</button>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-2xl mx-auto px-8 py-10">
         {projects.length === 0 ? (
@@ -59,12 +120,20 @@ export default function HomePage() {
             </div>
             <h2 className="text-base font-medium text-neutral-700 mb-1.5">No scripts yet</h2>
             <p className="text-sm text-neutral-400 mb-6">Start writing your first screenplay</p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-neutral-900 text-white text-sm px-5 py-2.5 rounded-lg hover:bg-neutral-700 transition-colors"
-            >
-              + New Script
-            </button>
+            <div className="flex items-center gap-3 justify-center">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="text-neutral-600 border border-neutral-300 text-sm px-5 py-2.5 rounded-lg hover:bg-neutral-100 transition-colors"
+              >
+                Upload PDF
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="bg-neutral-900 text-white text-sm px-5 py-2.5 rounded-lg hover:bg-neutral-700 transition-colors"
+              >
+                + New Script
+              </button>
+            </div>
           </div>
         ) : (
           <>
