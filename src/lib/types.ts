@@ -20,4 +20,7 @@ export interface Project {
   blocks: Block[]
   createdAt: string
   updatedAt: string
+  /** Title-page fields for PDF export */
+  author?: string
+  contact?: string
 }
