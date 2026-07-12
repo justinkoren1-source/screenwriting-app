@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { getProjects, createProject, deleteProject, saveProject } from '@/lib/storage'
+import { getProjects, createProject, deleteProject, saveDocument } from '@/lib/storage'
 import { supabase } from '@/lib/supabase'
 import type { Project } from '@/lib/types'
 
@@ -43,8 +43,8 @@ export default function HomePage() {
     const name = projectName.trim()
     if (!name) return
     try {
-      const project = await createProject(name)
-      router.push(`/script/${project.id}`)
+      const { project, screenplayId } = await createProject(name)
+      router.push(`/project/${project.id}/doc/${screenplayId}`)
     } catch (e) {
       console.error(e)
       setImportError('Could not create the script. Are you online?')
@@ -73,9 +73,17 @@ export default function HomePage() {
       const { parsePdfToBlocks, titleFromFilename } = await import('@/lib/pdfParser')
       const blocks = await parsePdfToBlocks(file)
       const name = titleFromFilename(file.name)
-      const project = await createProject(name)
-      await saveProject({ ...project, blocks })
-      router.push(`/script/${project.id}`)
+      const { project, screenplayId } = await createProject(name)
+      await saveDocument({
+        id: screenplayId,
+        projectId: project.id,
+        kind: 'screenplay',
+        title: 'Screenplay',
+        blocks,
+        createdAt: project.createdAt,
+        updatedAt: new Date().toISOString(),
+      })
+      router.push(`/project/${project.id}/doc/${screenplayId}`)
     } catch (err) {
       console.error('PDF import error:', err)
       setImportError('Could not parse this PDF. Make sure it is a text-based (not scanned) screenplay.')
@@ -85,7 +93,7 @@ export default function HomePage() {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (!confirm('Delete this script?')) return
+    if (!confirm('Delete this project and all its documents?')) return
     try {
       await deleteProject(id)
       setProjects(prev => prev.filter(p => p.id !== id))
@@ -207,12 +215,12 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            <p className="text-xs font-medium text-neutral-400 mb-3 uppercase tracking-wider">Your Scripts</p>
+            <p className="text-xs font-medium text-neutral-400 mb-3 uppercase tracking-wider">Your Projects</p>
             <div className="space-y-2">
               {projects.map(project => (
                 <div
                   key={project.id}
-                  onClick={() => router.push(`/script/${project.id}`)}
+                  onClick={() => router.push(`/project/${project.id}`)}
                   className="flex items-center justify-between bg-white border border-neutral-200 rounded-xl px-5 py-4 cursor-pointer hover:border-neutral-400 hover:shadow-sm transition-all group"
                 >
                   <div>

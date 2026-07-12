@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Block, ElementType, Project } from '@/lib/types'
-import { saveProject } from '@/lib/storage'
+import type { Block, Doc, ElementType, Project } from '@/lib/types'
+import { saveDocument, saveProjectMeta } from '@/lib/storage'
 import { paginate, characterNames, cleanCharacterName } from '@/lib/screenplay'
 import { exportPdf } from '@/lib/pdfExport'
 
@@ -104,10 +104,13 @@ function getTextareaStyle(type: ElementType): React.CSSProperties {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ScreenplayEditor({ project: initial }: { project: Project }) {
+export default function ScreenplayEditor({ project: initial, doc }: { project: Project; doc: Doc }) {
   const router = useRouter()
-  const [blocks, setBlocks] = useState<Block[]>(initial.blocks)
-  const [activeId, setActiveId] = useState<string>(initial.blocks[0]?.id ?? '')
+  const initialBlocks = doc.blocks && doc.blocks.length > 0
+    ? doc.blocks
+    : [{ id: crypto.randomUUID(), type: 'scene-header' as ElementType, text: '' }]
+  const [blocks, setBlocks] = useState<Block[]>(initialBlocks)
+  const [activeId, setActiveId] = useState<string>(initialBlocks[0]?.id ?? '')
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -164,17 +167,11 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
     setSaveStatus('saving')
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      saveProject({
-        ...initial,
-        blocks: updated,
-        author: metaRef.current.author,
-        contact: metaRef.current.contact,
-        updatedAt: new Date().toISOString(),
-      })
+      saveDocument({ ...doc, blocks: updated, updatedAt: new Date().toISOString() })
         .then(() => setSaveStatus('saved'))
         .catch(err => { console.error('Save failed:', err); setSaveStatus('error') })
     }, 800)
-  }, [initial])
+  }, [doc])
 
   // ── Block mutations ───────────────────────────────────────────────────────
 
@@ -370,13 +367,12 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
     setExporting(true)
     try {
       metaRef.current = { author, contact }
-      const project: Project = {
-        ...initial, blocks, author, contact,
-        updatedAt: new Date().toISOString(),
-      }
-      saveProject(project)
-      await exportPdf(project)
+      const meta: Project = { ...initial, author, contact, updatedAt: new Date().toISOString() }
+      await saveProjectMeta(meta)
+      await exportPdf(meta, blocks)
       setShowExport(false)
+    } catch (err) {
+      console.error('Export failed:', err)
     } finally {
       setExporting(false)
     }
@@ -409,13 +405,13 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
       <header className="flex items-center justify-between px-6 py-3 bg-[#111] border-b border-white/10 shrink-0">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push(`/project/${initial.id}`)}
             className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Scripts
+            {initial.name}
           </button>
           <button
             onClick={() => setSidebarOpen(o => !o)}

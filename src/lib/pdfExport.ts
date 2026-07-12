@@ -32,7 +32,7 @@ const UPPERCASE: Record<ElementType, boolean> = {
   'shot': true,
 }
 
-export async function exportPdf(project: Project): Promise<void> {
+export async function exportPdf(project: Project, screenplayBlocks: Block[]): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
   doc.setFont('courier', 'normal')
@@ -66,7 +66,7 @@ export async function exportPdf(project: Project): Promise<void> {
     doc.text(`${pageNum}.`, RIGHT_EDGE, 36, { align: 'right' })
   }
 
-  const blocks = project.blocks.filter(b => b.text.trim())
+  const blocks = screenplayBlocks.filter(b => b.text.trim())
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i]
     const width = CHARS_PER_LINE[b.type]
