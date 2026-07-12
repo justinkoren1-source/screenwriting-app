@@ -113,15 +113,27 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auto-resize all textareas when blocks change
-  useEffect(() => {
-    blocks.forEach(block => {
-      const el = refs.current.get(block.id)
-      if (el) {
-        el.style.height = 'auto'
-        el.style.height = el.scrollHeight + 'px'
-      }
+  const resizeAll = useCallback(() => {
+    refs.current.forEach(el => {
+      // Skip if not laid out yet (width 0 would wrap every char to its own line)
+      if (el.clientWidth === 0) return
+      el.style.height = 'auto'
+      el.style.height = el.scrollHeight + 'px'
     })
-  }, [blocks])
+  }, [])
+
+  useEffect(() => { resizeAll() }, [blocks, resizeAll])
+
+  // Re-measure once layout and fonts have settled, and on window resize
+  useEffect(() => {
+    const raf = requestAnimationFrame(resizeAll)
+    document.fonts?.ready.then(resizeAll)
+    window.addEventListener('resize', resizeAll)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', resizeAll)
+    }
+  }, [resizeAll])
 
   // Focus a newly created block after render
   useEffect(() => {

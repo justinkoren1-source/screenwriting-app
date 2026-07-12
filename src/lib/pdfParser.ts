@@ -32,7 +32,8 @@ function detectType(
       t === 'FADE OUT.' ||
       t === 'FADE IN.' ||
       t === 'THE END' ||
-      /^FADE\s+(OUT|IN|TO)[\s.:]/.test(t))
+      /^FADE\s+(OUT|IN|TO)[\s.:]/.test(t) ||
+      xRatio > 0.55) // right-aligned all-caps = transition, not character
   )
     return 'transition'
 
@@ -44,14 +45,15 @@ function detectType(
   )
     return 'parenthetical'
 
-  // Dialog: continues after character / parenthetical / prior dialog
+  // Dialog: continues after character / parenthetical / prior dialog,
+  // but only if the line sits at the dialog indent (~29%). Lines back at
+  // the left action margin mean the dialog ended.
   if (
     prevType === 'character' ||
     prevType === 'parenthetical' ||
     prevType === 'dialog'
   ) {
-    // Only stay in dialog if the line isn't clearly a new scene/character
-    if (!isAllCaps || xRatio < 0.38) return 'dialog'
+    if (xRatio >= 0.24 && (!isAllCaps || xRatio < 0.38)) return 'dialog'
   }
 
   // Character: all-caps, indented past ~33% of page (scene headings sit at ~18%)
@@ -89,20 +91,28 @@ export async function parsePdfToBlocks(file: File): Promise<Block[]> {
     const tc = await page.getTextContent()
 
     // Bucket items by y-coordinate (quantize to 2pt grid to handle sub-pixel offsets)
-    const yMap = new Map<number, { str: string; x: number }[]>()
+    const yMap = new Map<number, { str: string; x: number; w: number }[]>()
     for (const item of tc.items) {
       if (!('str' in item) || !item.str.trim()) continue
-      const ix: number = (item as { transform: number[] }).transform[4]
-      const iy: number = (item as { transform: number[] }).transform[5]
-      const yKey = Math.round(iy / 2) * 2
+      const it = item as { str: string; transform: number[]; width: number }
+      const yKey = Math.round(it.transform[5] / 2) * 2
       const bucket = yMap.get(yKey) ?? []
-      bucket.push({ str: item.str, x: ix })
+      bucket.push({ str: it.str, x: it.transform[4], w: it.width })
       yMap.set(yKey, bucket)
     }
 
     for (const [yKey, items] of yMap) {
       items.sort((a, b) => a.x - b.x)
-      const text = items.map(i => i.str).join('').trim()
+      // Join items, inserting a space when there's a visible gap between them
+      // (PDFs often store each word as a separate item without literal spaces)
+      let text = ''
+      let prevEnd = -1
+      for (const i of items) {
+        if (prevEnd >= 0 && i.x - prevEnd > 1 && !text.endsWith(' ')) text += ' '
+        text += i.str
+        prevEnd = i.x + i.w
+      }
+      text = text.trim()
       if (!text || shouldSkip(text, items[0].x, pageWidth)) continue
       // Normalize y: page 1 starts at 0, each subsequent page adds 100,000
       rawLines.push({
