@@ -1,8 +1,11 @@
+import { supabase } from './supabase'
 import type { Project } from './types'
 
 const KEY = 'sw_projects'
 
-function load(): Project[] {
+// ── Local (guest mode) ───────────────────────────────────────────────────────
+
+function loadLocal(): Project[] {
   if (typeof window === 'undefined') return []
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? '[]')
@@ -11,27 +14,93 @@ function load(): Project[] {
   }
 }
 
-function persist(projects: Project[]): void {
+function persistLocal(projects: Project[]): void {
   localStorage.setItem(KEY, JSON.stringify(projects))
 }
 
-export function getProjects(): Project[] {
-  return load()
+// ── Cloud row mapping ────────────────────────────────────────────────────────
+
+interface ScriptRow {
+  id: string
+  user_id: string
+  name: string
+  blocks: Project['blocks']
+  author: string | null
+  contact: string | null
+  created_at: string
+  updated_at: string
 }
 
-export function getProject(id: string): Project | null {
-  return load().find(p => p.id === id) ?? null
+function rowToProject(r: ScriptRow): Project {
+  return {
+    id: r.id,
+    name: r.name,
+    blocks: r.blocks,
+    author: r.author ?? undefined,
+    contact: r.contact ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
 }
 
-export function saveProject(project: Project): void {
-  const all = load()
-  const idx = all.findIndex(p => p.id === project.id)
-  if (idx >= 0) all[idx] = project
-  else all.push(project)
-  persist(all)
+function projectToRow(p: Project, userId: string) {
+  return {
+    id: p.id,
+    user_id: userId,
+    name: p.name,
+    blocks: p.blocks,
+    author: p.author ?? null,
+    contact: p.contact ?? null,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  }
 }
 
-export function createProject(name: string): Project {
+async function currentUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.user.id ?? null
+}
+
+// ── Public API (cloud when signed in, localStorage otherwise) ────────────────
+
+export async function getProjects(): Promise<Project[]> {
+  const uid = await currentUserId()
+  if (!uid) return loadLocal()
+  const { data, error } = await supabase
+    .from('scripts')
+    .select('*')
+    .order('updated_at', { ascending: false })
+  if (error) throw error
+  return (data as ScriptRow[]).map(rowToProject)
+}
+
+export async function getProject(id: string): Promise<Project | null> {
+  const uid = await currentUserId()
+  if (!uid) return loadLocal().find(p => p.id === id) ?? null
+  const { data, error } = await supabase
+    .from('scripts')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return data ? rowToProject(data as ScriptRow) : null
+}
+
+export async function saveProject(project: Project): Promise<void> {
+  const uid = await currentUserId()
+  if (!uid) {
+    const all = loadLocal()
+    const idx = all.findIndex(p => p.id === project.id)
+    if (idx >= 0) all[idx] = project
+    else all.push(project)
+    persistLocal(all)
+    return
+  }
+  const { error } = await supabase.from('scripts').upsert(projectToRow(project, uid))
+  if (error) throw error
+}
+
+export async function createProject(name: string): Promise<Project> {
   const project: Project = {
     id: crypto.randomUUID(),
     name,
@@ -39,12 +108,33 @@ export function createProject(name: string): Project {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
-  const all = load()
-  all.push(project)
-  persist(all)
+  await saveProject(project)
   return project
 }
 
-export function deleteProject(id: string): void {
-  persist(load().filter(p => p.id !== id))
+export async function deleteProject(id: string): Promise<void> {
+  const uid = await currentUserId()
+  if (!uid) {
+    persistLocal(loadLocal().filter(p => p.id !== id))
+    return
+  }
+  const { error } = await supabase.from('scripts').delete().eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * One-time migration after sign-in: move any guest (localStorage) scripts
+ * to the user's cloud account, then clear local copies.
+ * Returns how many scripts were migrated.
+ */
+export async function migrateLocalToCloud(): Promise<number> {
+  const uid = await currentUserId()
+  if (!uid) return 0
+  const local = loadLocal()
+  if (local.length === 0) return 0
+  const rows = local.map(p => projectToRow(p, uid))
+  const { error } = await supabase.from('scripts').upsert(rows)
+  if (error) throw error
+  localStorage.removeItem(KEY)
+  return local.length
 }

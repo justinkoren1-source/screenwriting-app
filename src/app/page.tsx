@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getProjects, createProject, deleteProject, saveProject } from '@/lib/storage'
+import { supabase } from '@/lib/supabase'
 import type { Project } from '@/lib/types'
 
 export default function HomePage() {
@@ -12,20 +13,43 @@ export default function HomePage() {
   const [projectName, setProjectName] = useState('')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    const all = getProjects().sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    )
-    setProjects(all)
+  const refresh = useCallback(async () => {
+    try {
+      const all = await getProjects()
+      setProjects(
+        [...all].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      )
+    } catch (e) {
+      console.error('Failed to load projects:', e)
+    }
   }, [])
 
-  const handleCreate = () => {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUserEmail(data.session?.user.email ?? null)
+      refresh()
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user.email ?? null)
+      refresh()
+    })
+    return () => sub.subscription.unsubscribe()
+  }, [refresh])
+
+  const handleCreate = async () => {
     const name = projectName.trim()
     if (!name) return
-    const project = createProject(name)
-    router.push(`/script/${project.id}`)
+    try {
+      const project = await createProject(name)
+      router.push(`/script/${project.id}`)
+    } catch (e) {
+      console.error(e)
+      setImportError('Could not create the script. Are you online?')
+      setShowModal(false)
+    }
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,8 +64,8 @@ export default function HomePage() {
       const { parsePdfToBlocks, titleFromFilename } = await import('@/lib/pdfParser')
       const blocks = await parsePdfToBlocks(file)
       const name = titleFromFilename(file.name)
-      const project = createProject(name)
-      saveProject({ ...project, blocks })
+      const project = await createProject(name)
+      await saveProject({ ...project, blocks })
       router.push(`/script/${project.id}`)
     } catch (err) {
       console.error('PDF import error:', err)
@@ -50,11 +74,19 @@ export default function HomePage() {
     }
   }
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     if (!confirm('Delete this script?')) return
-    deleteProject(id)
-    setProjects(prev => prev.filter(p => p.id !== id))
+    try {
+      await deleteProject(id)
+      setProjects(prev => prev.filter(p => p.id !== id))
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
   }
 
   return (
@@ -63,9 +95,26 @@ export default function HomePage() {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-neutral-900">Screenplay</h1>
-            <p className="text-xs text-neutral-400 mt-0.5">Industry-standard format</p>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              {userEmail ? userEmail : 'Industry-standard format'}
+            </p>
           </div>
           <div className="flex items-center gap-2">
+            {userEmail ? (
+              <button
+                onClick={handleSignOut}
+                className="text-neutral-400 text-sm px-3 py-2 rounded-lg hover:text-neutral-700 transition-colors"
+              >
+                Sign out
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push('/login')}
+                className="text-neutral-600 text-sm px-3 py-2 rounded-lg hover:text-neutral-900 transition-colors"
+              >
+                Sign in
+              </button>
+            )}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
@@ -106,6 +155,18 @@ export default function HomePage() {
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
             <span>{importError}</span>
             <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-600 ml-4">✕</button>
+          </div>
+        </div>
+      )}
+
+      {!userEmail && projects.length > 0 && (
+        <div className="max-w-2xl mx-auto px-8 pt-4">
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">
+            Your scripts are only saved in this browser.{' '}
+            <button onClick={() => router.push('/login')} className="font-medium underline hover:text-amber-900">
+              Create a free account
+            </button>{' '}
+            to access them anywhere.
           </div>
         </div>
       )}

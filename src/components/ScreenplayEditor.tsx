@@ -109,7 +109,7 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
   const [blocks, setBlocks] = useState<Block[]>(initial.blocks)
   const [activeId, setActiveId] = useState<string>(initial.blocks[0]?.id ?? '')
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null)
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showExport, setShowExport] = useState(false)
   const [author, setAuthor] = useState(initial.author ?? '')
@@ -171,7 +171,8 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
         contact: metaRef.current.contact,
         updatedAt: new Date().toISOString(),
       })
-      setSaveStatus('saved')
+        .then(() => setSaveStatus('saved'))
+        .catch(err => { console.error('Save failed:', err); setSaveStatus('error') })
     }, 800)
   }, [initial])
 
@@ -431,8 +432,8 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
           <span className="text-xs text-gray-500">
             {pagination.totalPages} {pagination.totalPages === 1 ? 'page' : 'pages'}
           </span>
-          <span className="text-xs text-gray-500 w-12 text-right">
-            {saveStatus === 'saving' ? 'Saving…' : 'Saved'}
+          <span className={`text-xs w-24 text-right ${saveStatus === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
+            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
           </span>
           <button
             onClick={() => setShowExport(true)}

@@ -12,9 +12,12 @@ export default function ScriptPage() {
   const [project, setProject] = useState<Project | null>(null)
 
   useEffect(() => {
-    const p = getProject(id)
-    if (!p) { router.push('/'); return }
-    setProject(p)
+    getProject(id)
+      .then(p => {
+        if (!p) router.push('/')
+        else setProject(p)
+      })
+      .catch(() => router.push('/'))
   }, [id, router])
 
   if (!project) return <div className="min-h-screen bg-[#111]" />
