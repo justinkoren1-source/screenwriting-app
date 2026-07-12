@@ -63,15 +63,23 @@ async function currentUserId(): Promise<string | null> {
 
 // ── Public API (cloud when signed in, localStorage otherwise) ────────────────
 
+/**
+ * List projects for the home screen. Cloud rows come back WITHOUT their
+ * blocks (metadata only) to keep the payload small — use getProject(id)
+ * for the full script.
+ */
 export async function getProjects(): Promise<Project[]> {
   const uid = await currentUserId()
   if (!uid) return loadLocal()
   const { data, error } = await supabase
     .from('scripts')
-    .select('*')
+    .select('id, name, author, contact, created_at, updated_at')
     .order('updated_at', { ascending: false })
+    .limit(100)
   if (error) throw error
-  return (data as ScriptRow[]).map(rowToProject)
+  return (data as Omit<ScriptRow, 'blocks' | 'user_id'>[]).map(r =>
+    rowToProject({ ...r, blocks: [], user_id: '' } as ScriptRow)
+  )
 }
 
 export async function getProject(id: string): Promise<Project | null> {

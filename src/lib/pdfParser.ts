@@ -69,7 +69,9 @@ function detectType(
 export async function parsePdfToBlocks(file: File): Promise<Block[]> {
   // Dynamic import keeps pdfjs out of the server bundle
   const pdfjs = await import('pdfjs-dist')
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+  // Self-hosted worker (copied from pdfjs-dist by the postinstall script) —
+  // no runtime dependency on a third-party CDN
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
   const data = await file.arrayBuffer()
   const pdf = await pdfjs.getDocument({ data }).promise

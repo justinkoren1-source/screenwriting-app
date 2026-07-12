@@ -599,6 +599,7 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
             <label className="block text-xs font-medium text-neutral-500 mb-1.5">Written by</label>
             <input
               type="text"
+              maxLength={200}
               placeholder="Your name"
               value={author}
               onChange={e => setAuthor(e.target.value)}
@@ -608,6 +609,7 @@ export default function ScreenplayEditor({ project: initial }: { project: Projec
               Contact info (optional, shown bottom-left)
             </label>
             <textarea
+              maxLength={500}
               placeholder={'email@example.com\n555-123-4567'}
               value={contact}
               onChange={e => setContact(e.target.value)}

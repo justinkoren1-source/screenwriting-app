@@ -57,6 +57,15 @@ export default function HomePage() {
     if (!file) return
     if (fileInputRef.current) fileInputRef.current.value = ''
 
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setImportError('That file is not a PDF.')
+      return
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setImportError('PDF is too large (max 25MB).')
+      return
+    }
+
     setImporting(true)
     setImportError(null)
 
@@ -245,6 +254,7 @@ export default function HomePage() {
             <input
               autoFocus
               type="text"
+              maxLength={200}
               placeholder="e.g. The Dark Knight"
               value={projectName}
               onChange={e => setProjectName(e.target.value)}
