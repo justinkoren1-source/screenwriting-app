@@ -232,6 +232,27 @@ export default function ProjectPage() {
           </button>
         )}
 
+        {docs.length === 0 && (
+          <div className="fade-up text-center py-14 px-6 bg-[#141018] border border-white/8 rounded-2xl">
+            <div className="w-14 h-14 rounded-2xl grad-bg mx-auto mb-4 flex items-center justify-center text-2xl">🎬</div>
+            <h2 className="text-base font-medium text-neutral-100 mb-1">This project is empty</h2>
+            <p className="text-sm text-neutral-500 mb-6" style={{ textWrap: 'pretty' }}>
+              Add your first script, episode, or note to get started.
+            </p>
+            <div className="flex items-center gap-2.5 justify-center flex-wrap">
+              <button onClick={() => startNew('screenplay')} className="pressable grad-bg text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg shadow-fuchsia-500/20 hover:brightness-110">
+                🎬 New Screenplay
+              </button>
+              <button onClick={() => startNew('episode')} className="pressable text-neutral-200 border border-white/15 text-sm px-4 py-2.5 rounded-xl hover:bg-white/10">
+                📺 New Episode
+              </button>
+              <button onClick={() => startNew('note')} className="pressable text-neutral-200 border border-white/15 text-sm px-4 py-2.5 rounded-xl hover:bg-white/10">
+                📝 New Note
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2.5">
           {sorted.map((doc, i) => {
             const ep = isEpisode(doc)
@@ -291,9 +312,11 @@ export default function ProjectPage() {
           })}
         </div>
 
-        <p className="text-xs text-neutral-600 mt-8 text-center" style={{ textWrap: 'pretty' }}>
-          Add research, character bios, outlines, or general notes alongside your screenplay.
-        </p>
+        {docs.length > 0 && (
+          <p className="text-xs text-neutral-600 mt-8 text-center" style={{ textWrap: 'pretty' }}>
+            Add research, character bios, outlines, or general notes alongside your screenplay.
+          </p>
+        )}
       </div>
 
       {newKind && (

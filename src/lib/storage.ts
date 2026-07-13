@@ -155,33 +155,22 @@ export async function getProject(id: string): Promise<Project | null> {
   return project
 }
 
-/** Create a project folder with its screenplay document. */
-export async function createProject(name: string): Promise<{ project: Project; screenplayId: string }> {
+/** Create an empty project folder. Documents (scripts/episodes/notes) are added inside it. */
+export async function createProject(name: string): Promise<Project> {
   const now = new Date().toISOString()
   const project: Project = { id: crypto.randomUUID(), name, createdAt: now, updatedAt: now }
-  const screenplay: Doc = {
-    id: crypto.randomUUID(),
-    projectId: project.id,
-    kind: 'screenplay',
-    title: 'Screenplay',
-    blocks: [{ id: crypto.randomUUID(), type: 'scene-header', text: '' }],
-    createdAt: now,
-    updatedAt: now,
-  }
   const uid = await currentUserId()
   if (!uid) {
     const all = loadLocal()
-    all.push({ ...project, documents: [screenplay] })
+    all.push({ ...project, documents: [] })
     persistLocal(all)
   } else {
     const { error: pErr } = await supabase.from('projects').insert({
       id: project.id, user_id: uid, name, created_at: now, updated_at: now,
     })
     if (pErr) throw pErr
-    const { error: dErr } = await supabase.from('documents').insert(docToRow(screenplay, uid))
-    if (dErr) throw dErr
   }
-  return { project, screenplayId: screenplay.id }
+  return project
 }
 
 export async function saveProjectMeta(project: Project): Promise<void> {
