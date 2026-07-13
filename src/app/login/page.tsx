@@ -128,11 +128,6 @@ export default function LoginPage() {
           )}
         </p>
 
-        <p className="text-xs text-neutral-600 text-center mt-6">
-          <button onClick={() => router.push('/')} className="hover:text-neutral-400 transition-colors duration-150 px-2 py-2">
-            ← Continue without an account
-          </button>
-        </p>
       </div>
     </main>
   )

@@ -426,6 +426,39 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
     [blocks],
   )
 
+  // Group blocks into pages (each rendered as its own paper sheet)
+  const pages = useMemo(() => {
+    const result: { block: Block; idx: number }[][] = []
+    let current: { block: Block; idx: number }[] = []
+    blocks.forEach((block, idx) => {
+      if (pagination.breakBefore.has(block.id) && current.length) {
+        result.push(current)
+        current = []
+      }
+      current.push({ block, idx })
+    })
+    if (current.length) result.push(current)
+    return result
+  }, [blocks, pagination])
+
+  // Which page is currently in view (drives the live page indicator)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [viewPage, setViewPage] = useState(1)
+
+  const recomputeViewPage = useCallback(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    const markerY = sc.getBoundingClientRect().top + sc.clientHeight * 0.3
+    let p = 1
+    sc.querySelectorAll<HTMLElement>('[data-page]').forEach(el => {
+      if (el.getBoundingClientRect().top <= markerY) p = Number(el.dataset.page)
+    })
+    setViewPage(p)
+  }, [])
+
+  // Keep it fresh on scroll, typing, and navigation
+  useEffect(() => { recomputeViewPage() }, [blocks, activeId, recomputeViewPage])
+
   const jumpToBlock = (id: string) => {
     const el = refs.current.get(id)
     if (el) {
@@ -544,91 +577,108 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
           </aside>
         )}
 
-        {/* Script page */}
-        <div className="flex-1 overflow-y-auto py-12" style={{ backgroundColor: '#3a3a3a' }}>
-          <div
-            className="mx-auto bg-white shadow-2xl"
-            style={{
-              maxWidth: '816px',  // 8.5in at 96px/in
-              minHeight: '1056px', // 11in
-              padding: '96px 96px 192px 144px', // 1in top/right, 1.5in left
-            }}
-            onClick={e => {
-              if (e.target !== e.currentTarget) return
-              const last = blocks[blocks.length - 1]
-              if (!last) return
-              const el = refs.current.get(last.id)
-              if (el) { el.focus(); const l = el.value.length; el.setSelectionRange(l, l); setActiveId(last.id) }
-            }}
-          >
-            {blocks.map((block, idx) => (
-              <div key={block.id}>
-                {/* Page-break marker */}
-                {pagination.breakBefore.has(block.id) && (
-                  <div className="flex items-center gap-3 my-6 -mx-12 select-none" contentEditable={false}>
-                    <div className="flex-1 border-t border-dashed border-neutral-300" />
-                    <span className="text-[10px] text-neutral-400 font-sans">
-                      PAGE {pagination.pageOfBlock.get(block.id)}
-                    </span>
-                    <div className="flex-1 border-t border-dashed border-neutral-300" />
+        {/* Script pages */}
+        <div className="relative flex-1 min-w-0">
+          <div ref={scrollRef} onScroll={recomputeViewPage} className="h-full overflow-y-auto py-12" style={{ backgroundColor: '#3a3a3a' }}>
+            {pages.map((pageBlocks, pageIdx) => (
+              <div
+                key={pageIdx}
+                data-page={pageIdx + 1}
+                className="mx-auto bg-white shadow-2xl relative"
+                style={{
+                  maxWidth: '816px',   // 8.5in at 96px/in
+                  minHeight: '1292px', // ~one page of content at screen metrics
+                  padding: '96px 96px 96px 144px', // 1in top/bottom/right, 1.5in left
+                  marginBottom: '28px',
+                }}
+                onClick={e => {
+                  if (e.target !== e.currentTarget) return
+                  const last = pageBlocks[pageBlocks.length - 1]?.block ?? blocks[blocks.length - 1]
+                  if (!last) return
+                  const el = refs.current.get(last.id)
+                  if (el) { el.focus(); const l = el.value.length; el.setSelectionRange(l, l); setActiveId(last.id) }
+                }}
+              >
+                {/* Page number, top-right (industry standard — page 1 unnumbered) */}
+                {pageIdx > 0 && (
+                  <div
+                    className="absolute text-[13px] text-neutral-400 select-none"
+                    style={{
+                      top: '40px', right: '96px',
+                      fontFamily: "var(--font-courier-prime), Courier, monospace",
+                    }}
+                    contentEditable={false}
+                  >
+                    {pageIdx + 1}.
                   </div>
                 )}
 
-                {/* Vertical spacing above certain elements */}
-                {idx > 0 && SPACE_ABOVE[block.type] && !pagination.breakBefore.has(block.id) && (
-                  <div style={{ height: SPACE_ABOVE[block.type] }} />
-                )}
+                {pageBlocks.map(({ block, idx }, i) => (
+                  <div key={block.id}>
+                    {/* Vertical spacing above certain elements (not at the top of a page) */}
+                    {i > 0 && SPACE_ABOVE[block.type] && (
+                      <div style={{ height: SPACE_ABOVE[block.type] }} />
+                    )}
 
-                <div className="relative">
-                  <textarea
-                    ref={el => {
-                      if (el) refs.current.set(block.id, el)
-                      else refs.current.delete(block.id)
-                    }}
-                    value={block.text}
-                    rows={1}
-                    spellCheck
-                    placeholder={PLACEHOLDERS[block.type]}
-                    style={getTextareaStyle(block.type)}
-                    onChange={e => {
-                      // Block newlines (Enter is handled by onKeyDown)
-                      const raw = e.target.value.replace(/\n/g, '')
-                      const text = UPPERCASE_TYPES.has(block.type) ? raw.toUpperCase() : raw
-                      updateText(block.id, text)
-                      refreshSuggestions(block, text)
-                    }}
-                    onKeyDown={e => handleKeyDown(e, block, idx)}
-                    onFocus={() => setActiveId(block.id)}
-                    onBlur={() => setTimeout(() => setSuggestions([]), 150)}
-                  />
+                    <div className="relative">
+                      <textarea
+                        ref={el => {
+                          if (el) refs.current.set(block.id, el)
+                          else refs.current.delete(block.id)
+                        }}
+                        value={block.text}
+                        rows={1}
+                        spellCheck
+                        placeholder={PLACEHOLDERS[block.type]}
+                        style={getTextareaStyle(block.type)}
+                        onChange={e => {
+                          const raw = e.target.value.replace(/\n/g, '')
+                          const text = UPPERCASE_TYPES.has(block.type) ? raw.toUpperCase() : raw
+                          updateText(block.id, text)
+                          refreshSuggestions(block, text)
+                        }}
+                        onKeyDown={e => handleKeyDown(e, block, idx)}
+                        onFocus={() => setActiveId(block.id)}
+                        onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+                      />
 
-                  {/* Character autocomplete dropdown */}
-                  {block.id === activeId && block.type === 'character' && suggestions.length > 0 && (
-                    <div
-                      className="absolute z-10 bg-white border border-neutral-200 rounded-lg shadow-lg py-1 min-w-[180px]"
-                      style={{ left: '211px', top: '100%' }}
-                    >
-                      {suggestions.map((name, i) => (
-                        <button
-                          key={name}
-                          onMouseDown={e => {
-                            e.preventDefault()
-                            updateText(block.id, name)
-                            setSuggestions([])
-                          }}
-                          className={[
-                            'block w-full text-left px-3 py-1.5 text-sm font-mono',
-                            i === suggestIndex ? 'bg-neutral-100 text-black' : 'text-neutral-600',
-                          ].join(' ')}
+                      {/* Character autocomplete dropdown */}
+                      {block.id === activeId && block.type === 'character' && suggestions.length > 0 && (
+                        <div
+                          className="absolute z-10 bg-white border border-neutral-200 rounded-lg shadow-lg py-1 min-w-[180px]"
+                          style={{ left: '211px', top: '100%' }}
                         >
-                          {name}
-                        </button>
-                      ))}
+                          {suggestions.map((name, si) => (
+                            <button
+                              key={name}
+                              onMouseDown={e => {
+                                e.preventDefault()
+                                updateText(block.id, name)
+                                setSuggestions([])
+                              }}
+                              className={[
+                                'block w-full text-left px-3 py-1.5 text-sm font-mono',
+                                si === suggestIndex ? 'bg-neutral-100 text-black' : 'text-neutral-600',
+                              ].join(' ')}
+                            >
+                              {name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                ))}
               </div>
             ))}
+          </div>
+
+          {/* Live page indicator, bottom-right beside the script */}
+          <div
+            className="absolute bottom-4 right-4 bg-[#111]/90 backdrop-blur border border-white/10 text-xs text-neutral-300 px-3 py-1.5 rounded-full shadow-lg select-none pointer-events-none"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            Page {viewPage} of {pagination.totalPages}
           </div>
         </div>
 

@@ -32,6 +32,7 @@ export default function HomePage() {
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [ready, setReady] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
@@ -47,15 +48,18 @@ export default function HomePage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setUserEmail(data.session?.user.email ?? null)
+      if (!data.session) { router.replace('/login'); return }
+      setUserEmail(data.session.user.email ?? null)
+      setReady(true)
       refresh()
     })
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserEmail(session?.user.email ?? null)
+      if (!session) { router.replace('/login'); return }
+      setUserEmail(session.user.email ?? null)
       refresh()
     })
     return () => sub.subscription.unsubscribe()
-  }, [refresh])
+  }, [refresh, router])
 
   const handleCreate = async () => {
     const name = projectName.trim()
@@ -134,6 +138,8 @@ export default function HomePage() {
     await supabase.auth.signOut()
   }
 
+  if (!ready) return <main className="min-h-screen" />
+
   return (
     <main className="min-h-screen relative overflow-x-hidden">
       {/* Spotlight glow */}
@@ -155,21 +161,12 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {userEmail ? (
-              <button
-                onClick={handleSignOut}
-                className="pressable text-neutral-400 text-sm px-3 py-2.5 rounded-lg hover:text-white hover:bg-white/5"
-              >
-                Sign out
-              </button>
-            ) : (
-              <button
-                onClick={() => router.push('/login')}
-                className="pressable text-neutral-300 text-sm px-3 py-2.5 rounded-lg hover:text-white hover:bg-white/5"
-              >
-                Sign in
-              </button>
-            )}
+            <button
+              onClick={handleSignOut}
+              className="pressable text-neutral-400 text-sm px-3 py-2.5 rounded-lg hover:text-white hover:bg-white/5"
+            >
+              Sign out
+            </button>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
@@ -210,18 +207,6 @@ export default function HomePage() {
           <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl px-4 py-3 flex items-center justify-between">
             <span>{importError}</span>
             <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-200 ml-4 w-8 h-8 -my-1">✕</button>
-          </div>
-        </div>
-      )}
-
-      {!userEmail && projects.length > 0 && (
-        <div className="relative max-w-2xl mx-auto px-8 pt-4">
-          <div className="bg-amber-400/10 border border-amber-400/30 text-amber-200 text-sm rounded-xl px-4 py-3">
-            Your scripts are only saved in this browser.{' '}
-            <button onClick={() => router.push('/login')} className="font-medium underline hover:text-amber-100">
-              Create a free account
-            </button>{' '}
-            to take them anywhere.
           </div>
         </div>
       )}

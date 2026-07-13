@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getProject, createDocument, deleteDocument, saveProjectMeta } from '@/lib/storage'
+import { supabase } from '@/lib/supabase'
 import type { Brief, Doc, Project } from '@/lib/types'
 import { briefHasContent } from '@/lib/types'
 import BriefFields from '@/components/BriefFields'
@@ -43,7 +44,12 @@ export default function ProjectPage() {
     }
   }, [id, router])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) { router.replace('/login'); return }
+      load()
+    })
+  }, [load, router])
 
   const handleCreateDoc = async () => {
     const title = docTitle.trim()
