@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0e0e14;
+  --foreground: #ededf2;
+  --surface: #17171f;
+  --grad-a: #7c3aed;
+  --grad-b: #ec4899;
+  --accent: #f59e0b;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
@@ -13,4 +22,43 @@ body {
 /* Prevent textarea scrollbars during auto-resize */
 textarea {
   overflow: hidden;
+}
+
+/* One-shot entrance for cards and panels */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-up {
+  animation: fade-up 0.35s ease-out both;
+}
+
+/* Brand gradient helpers */
+.grad-bg {
+  background-image: linear-gradient(135deg, var(--grad-a), var(--grad-b));
+}
+
+.grad-text {
+  background-image: linear-gradient(135deg, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Tactile press for buttons */
+.pressable {
+  transition-property: transform, box-shadow, background-color, border-color, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.pressable:active {
+  transform: scale(0.97);
 }

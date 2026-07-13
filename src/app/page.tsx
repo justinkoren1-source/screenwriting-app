@@ -6,6 +6,20 @@ import { getProjects, createProject, deleteProject, saveDocument } from '@/lib/s
 import { supabase } from '@/lib/supabase'
 import type { Project } from '@/lib/types'
 
+// Each project gets a stable gradient tile based on its name
+const TILE_GRADIENTS = [
+  'linear-gradient(135deg, #7c3aed, #ec4899)',
+  'linear-gradient(135deg, #f59e0b, #ef4444)',
+  'linear-gradient(135deg, #06b6d4, #7c3aed)',
+  'linear-gradient(135deg, #10b981, #06b6d4)',
+  'linear-gradient(135deg, #ec4899, #f59e0b)',
+]
+function tileFor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
+  return TILE_GRADIENTS[Math.abs(h) % TILE_GRADIENTS.length]
+}
+
 export default function HomePage() {
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
@@ -107,27 +121,37 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white px-8 py-5">
+    <main className="min-h-screen relative overflow-x-hidden">
+      {/* Spotlight glow */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[720px] h-[480px] rounded-full opacity-25 blur-3xl"
+        style={{ background: 'radial-gradient(ellipse at center, #7c3aed 0%, #ec4899 45%, transparent 70%)' }}
+      />
+
+      <header className="relative border-b border-white/10 px-8 py-5">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-neutral-900">Screenplay</h1>
-            <p className="text-xs text-neutral-400 mt-0.5">
-              {userEmail ? userEmail : 'Industry-standard format'}
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold tracking-tight">
+              <span className="mr-2">🎬</span>
+              <span className="grad-text">Screenplay</span>
+            </h1>
+            <p className="text-xs text-neutral-500 mt-0.5 truncate">
+              {userEmail ?? 'Every great film starts with FADE IN.'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {userEmail ? (
               <button
                 onClick={handleSignOut}
-                className="text-neutral-400 text-sm px-3 py-2 rounded-lg hover:text-neutral-700 transition-colors"
+                className="pressable text-neutral-400 text-sm px-3 py-2.5 rounded-lg hover:text-white hover:bg-white/5"
               >
                 Sign out
               </button>
             ) : (
               <button
                 onClick={() => router.push('/login')}
-                className="text-neutral-600 text-sm px-3 py-2 rounded-lg hover:text-neutral-900 transition-colors"
+                className="pressable text-neutral-300 text-sm px-3 py-2.5 rounded-lg hover:text-white hover:bg-white/5"
               >
                 Sign in
               </button>
@@ -135,7 +159,7 @@ export default function HomePage() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="text-neutral-600 border border-neutral-300 text-sm px-4 py-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50 transition-colors flex items-center gap-2"
+              className="pressable text-neutral-200 border border-white/15 text-sm px-4 py-2.5 rounded-xl hover:bg-white/10 hover:border-white/25 disabled:opacity-50 flex items-center gap-2"
             >
               {importing ? (
                 <>
@@ -151,7 +175,7 @@ export default function HomePage() {
             </button>
             <button
               onClick={() => setShowModal(true)}
-              className="bg-neutral-900 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 transition-colors"
+              className="pressable grad-bg text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg shadow-fuchsia-500/20 hover:shadow-fuchsia-500/40 hover:brightness-110"
             >
               + New Script
             </button>
@@ -168,46 +192,48 @@ export default function HomePage() {
       />
 
       {importError && (
-        <div className="max-w-2xl mx-auto px-8 pt-4">
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
+        <div className="relative max-w-2xl mx-auto px-8 pt-4">
+          <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl px-4 py-3 flex items-center justify-between">
             <span>{importError}</span>
-            <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-600 ml-4">✕</button>
+            <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-200 ml-4 w-8 h-8 -my-1">✕</button>
           </div>
         </div>
       )}
 
       {!userEmail && projects.length > 0 && (
-        <div className="max-w-2xl mx-auto px-8 pt-4">
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">
+        <div className="relative max-w-2xl mx-auto px-8 pt-4">
+          <div className="bg-amber-400/10 border border-amber-400/30 text-amber-200 text-sm rounded-xl px-4 py-3">
             Your scripts are only saved in this browser.{' '}
-            <button onClick={() => router.push('/login')} className="font-medium underline hover:text-amber-900">
+            <button onClick={() => router.push('/login')} className="font-medium underline hover:text-amber-100">
               Create a free account
             </button>{' '}
-            to access them anywhere.
+            to take them anywhere.
           </div>
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto px-8 py-10">
+      <div className="relative max-w-2xl mx-auto px-8 py-10">
         {projects.length === 0 ? (
-          <div className="text-center py-24">
-            <div className="w-16 h-16 rounded-2xl bg-neutral-200 mx-auto mb-5 flex items-center justify-center">
-              <svg className="w-8 h-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
+          <div className="text-center py-24 fade-up">
+            <div className="w-20 h-20 rounded-3xl grad-bg mx-auto mb-6 flex items-center justify-center text-4xl shadow-xl shadow-fuchsia-500/25">
+              🎬
             </div>
-            <h2 className="text-base font-medium text-neutral-700 mb-1.5">No scripts yet</h2>
-            <p className="text-sm text-neutral-400 mb-6">Start writing your first screenplay</p>
+            <h2 className="text-lg font-semibold text-white mb-1.5" style={{ textWrap: 'balance' }}>
+              Every great film starts with FADE IN.
+            </h2>
+            <p className="text-sm text-neutral-400 mb-8" style={{ textWrap: 'pretty' }}>
+              Write in perfect industry format — or bring in a script you already have.
+            </p>
             <div className="flex items-center gap-3 justify-center">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-neutral-600 border border-neutral-300 text-sm px-5 py-2.5 rounded-lg hover:bg-neutral-100 transition-colors"
+                className="pressable text-neutral-200 border border-white/15 text-sm px-5 py-3 rounded-xl hover:bg-white/10 hover:border-white/25"
               >
                 Upload PDF
               </button>
               <button
                 onClick={() => setShowModal(true)}
-                className="bg-neutral-900 text-white text-sm px-5 py-2.5 rounded-lg hover:bg-neutral-700 transition-colors"
+                className="pressable grad-bg text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg shadow-fuchsia-500/20 hover:shadow-fuchsia-500/40 hover:brightness-110"
               >
                 + New Script
               </button>
@@ -215,30 +241,42 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            <p className="text-xs font-medium text-neutral-400 mb-3 uppercase tracking-wider">Your Projects</p>
-            <div className="space-y-2">
-              {projects.map(project => (
+            <p className="text-xs font-semibold text-neutral-500 mb-3 uppercase tracking-widest">Your Projects</p>
+            <div className="space-y-2.5">
+              {projects.map((project, i) => (
                 <div
                   key={project.id}
                   onClick={() => router.push(`/project/${project.id}`)}
-                  className="flex items-center justify-between bg-white border border-neutral-200 rounded-xl px-5 py-4 cursor-pointer hover:border-neutral-400 hover:shadow-sm transition-all group"
+                  className="fade-up flex items-center justify-between bg-[#17171f] border border-white/8 rounded-2xl px-4 py-3.5 cursor-pointer hover:border-white/20 hover:bg-[#1c1c26] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/40 transition-[transform,background-color,border-color,box-shadow] duration-150 ease-out group"
+                  style={{ animationDelay: `${Math.min(i * 45, 360)}ms` }}
                 >
-                  <div>
-                    <p className="font-medium text-neutral-900 text-sm">{project.name}</p>
-                    <p className="text-xs text-neutral-400 mt-0.5">
-                      Edited {new Date(project.updatedAt).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                      })}
-                    </p>
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div
+                      className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center text-white font-bold text-base shadow-inner"
+                      style={{ background: tileFor(project.name) }}
+                    >
+                      {project.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-neutral-100 text-sm truncate">{project.name}</p>
+                      <p className="text-xs text-neutral-500 mt-0.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        Edited {new Date(project.updatedAt).toLocaleDateString('en-US', {
+                          month: 'short', day: 'numeric', year: 'numeric',
+                        })}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 shrink-0">
                     <button
                       onClick={e => handleDelete(e, project.id)}
-                      className="text-xs text-neutral-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                      className="text-xs text-neutral-600 hover:text-red-400 transition-colors duration-150 opacity-0 group-hover:opacity-100 px-2 py-2"
                     >
                       Delete
                     </button>
-                    <svg className="w-4 h-4 text-neutral-300 group-hover:text-neutral-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg
+                      className="w-4 h-4 text-neutral-600 group-hover:text-neutral-300 group-hover:translate-x-0.5 transition-[color,transform] duration-150"
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
@@ -251,13 +289,13 @@ export default function HomePage() {
 
       {showModal && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={e => {
             if (e.target === e.currentTarget) { setShowModal(false); setProjectName('') }
           }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
-            <h2 className="text-xl font-semibold text-neutral-900 mb-1">New Script</h2>
+          <div className="fade-up bg-[#17171f] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md p-8">
+            <h2 className="text-xl font-semibold text-white mb-1">New Script</h2>
             <p className="text-sm text-neutral-400 mb-6">Give your screenplay a title to get started</p>
             <input
               autoFocus
@@ -267,19 +305,19 @@ export default function HomePage() {
               value={projectName}
               onChange={e => setProjectName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleCreate()}
-              className="w-full border border-neutral-200 rounded-lg px-4 py-3 text-sm outline-none focus:border-neutral-400 focus:ring-2 focus:ring-neutral-100 transition-all"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-600 outline-none focus:border-fuchsia-400/60 focus:ring-2 focus:ring-fuchsia-500/20 transition-[border-color,box-shadow] duration-150"
             />
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => { setShowModal(false); setProjectName('') }}
-                className="flex-1 text-sm text-neutral-500 border border-neutral-200 rounded-lg py-2.5 hover:bg-neutral-50 transition-colors"
+                className="pressable flex-1 text-sm text-neutral-400 border border-white/10 rounded-xl py-2.5 hover:bg-white/5 hover:text-neutral-200"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreate}
                 disabled={!projectName.trim()}
-                className="flex-1 text-sm bg-neutral-900 text-white rounded-lg py-2.5 hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="pressable flex-1 text-sm grad-bg text-white font-medium rounded-xl py-2.5 hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Get Started
               </button>

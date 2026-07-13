@@ -80,8 +80,8 @@ export async function exportPdf(project: Project, screenplayBlocks: Block[]): Pr
     if (line + needed > LINES_PER_PAGE && line > 0) newPage()
     else line += blanks
 
-    const bold = b.type === 'scene-header'
-    doc.setFont('courier', bold ? 'bold' : 'normal')
+    // Industry standard: scene headings are plain uppercase, not bold
+    doc.setFont('courier', 'normal')
 
     for (const l of lines) {
       if (line >= LINES_PER_PAGE) newPage()

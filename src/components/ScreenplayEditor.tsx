@@ -57,20 +57,32 @@ const PLACEHOLDERS: Record<ElementType, string> = {
   'shot':          'CLOSE ON:',
 }
 
-// Vertical spacing above element (px)
+// ── Industry-standard page geometry ──────────────────────────────────────────
+// Screen scale: 1 inch = 96px (CSS standard). Page = US Letter 8.5in wide,
+// margins 1.5in left / 1in right, Courier 12pt (16px). Real scripts are
+// single-spaced (12pt leading); we use 20px on screen for edit comfort while
+// keeping print-accurate indents. PDF export uses exact print metrics.
+const LINE = 20 // on-screen line height (px)
+
+// Vertical spacing above element: 1 blank line before most elements,
+// 2 before a scene heading — exactly like a printed script
 const SPACE_ABOVE: Partial<Record<ElementType, number>> = {
-  'scene-header': 32,
-  'character':    16,
-  'transition':   32,
-  'shot':         16,
+  'scene-header': LINE * 2,
+  'action':       LINE,
+  'character':    LINE,
+  'transition':   LINE,
+  'shot':         LINE,
 }
 
+// Indents from the text margin (1.5in), at 96px/in:
+// character 2.2in=211px · dialog 1.0in=96px (3.5in col → 144px right)
+// parenthetical 1.6in=154px (≈2.4in col → 192px right)
 function getTextareaStyle(type: ElementType): React.CSSProperties {
   const base: React.CSSProperties = {
     fontFamily: "var(--font-courier-prime), 'Courier Prime', Courier, monospace",
-    fontSize: '15px',
-    lineHeight: '26px',
-    color: '#111',
+    fontSize: '16px',
+    lineHeight: `${LINE}px`,
+    color: '#1a1a1a',
     resize: 'none',
     overflow: 'hidden',
     background: 'transparent',
@@ -82,21 +94,21 @@ function getTextareaStyle(type: ElementType): React.CSSProperties {
   }
   switch (type) {
     case 'scene-header':
-      return { ...base, textTransform: 'uppercase', fontWeight: '700' }
+      return { ...base, textTransform: 'uppercase' }
     case 'action':
       return { ...base }
     case 'character':
-      return { ...base, textTransform: 'uppercase', paddingLeft: '200px' }
+      return { ...base, textTransform: 'uppercase', paddingLeft: '211px' }
     case 'dialog':
-      return { ...base, paddingLeft: '88px', paddingRight: '64px' }
+      return { ...base, paddingLeft: '96px', paddingRight: '144px' }
     case 'parenthetical':
-      return { ...base, paddingLeft: '116px', paddingRight: '96px', fontStyle: 'italic' }
+      return { ...base, paddingLeft: '154px', paddingRight: '192px' }
     case 'extension':
-      return { ...base, textTransform: 'uppercase', paddingLeft: '200px' }
+      return { ...base, textTransform: 'uppercase', paddingLeft: '211px' }
     case 'transition':
       return { ...base, textTransform: 'uppercase', textAlign: 'right' }
     case 'shot':
-      return { ...base, textTransform: 'uppercase', fontWeight: '600' }
+      return { ...base, textTransform: 'uppercase' }
     default:
       return base
   }
@@ -425,7 +437,7 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
         </div>
         <span className="text-white text-sm font-medium">{initial.name}</span>
         <div className="flex items-center gap-4">
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-amber-400/90" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {pagination.totalPages} {pagination.totalPages === 1 ? 'page' : 'pages'}
           </span>
           <span className={`text-xs w-24 text-right ${saveStatus === 'error' ? 'text-red-400' : 'text-gray-500'}`}>
@@ -433,7 +445,7 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
           </span>
           <button
             onClick={() => setShowExport(true)}
-            className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded transition-colors"
+            className="pressable grad-bg text-white text-xs font-medium px-3.5 py-2 rounded-lg shadow-md shadow-fuchsia-500/20 hover:brightness-110"
           >
             Export PDF
           </button>
@@ -450,9 +462,9 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
               if (activeId) changeType(activeId, type)
             }}
             className={[
-              'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs whitespace-nowrap transition-colors',
+              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs whitespace-nowrap transition-[background-color,color,box-shadow] duration-150',
               activeType === type
-                ? 'bg-white/15 text-white'
+                ? 'grad-bg text-white shadow-md shadow-fuchsia-500/25'
                 : 'text-gray-400 hover:text-gray-200 hover:bg-white/5',
             ].join(' ')}
           >
@@ -497,9 +509,9 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
           <div
             className="mx-auto bg-white shadow-2xl"
             style={{
-              maxWidth: '740px',
-              minHeight: '900px',
-              padding: '80px 64px 160px 96px',
+              maxWidth: '816px',  // 8.5in at 96px/in
+              minHeight: '1056px', // 11in
+              padding: '96px 96px 192px 144px', // 1in top/right, 1.5in left
             }}
             onClick={e => {
               if (e.target !== e.currentTarget) return
@@ -554,7 +566,7 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
                   {block.id === activeId && block.type === 'character' && suggestions.length > 0 && (
                     <div
                       className="absolute z-10 bg-white border border-neutral-200 rounded-lg shadow-lg py-1 min-w-[180px]"
-                      style={{ left: '200px', top: '100%' }}
+                      style={{ left: '211px', top: '100%' }}
                     >
                       {suggestions.map((name, i) => (
                         <button
@@ -587,8 +599,8 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={e => { if (e.target === e.currentTarget) setShowExport(false) }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
-            <h2 className="text-xl font-semibold text-neutral-900 mb-1">Export PDF</h2>
+          <div className="fade-up bg-[#17171f] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md p-8">
+            <h2 className="text-xl font-semibold text-white mb-1">Export PDF</h2>
             <p className="text-sm text-neutral-400 mb-6">
               Title page info for &ldquo;{initial.name}&rdquo;
             </p>
@@ -599,7 +611,7 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
               placeholder="Your name"
               value={author}
               onChange={e => setAuthor(e.target.value)}
-              className="w-full border border-neutral-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-neutral-400 mb-4"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-600 outline-none focus:border-fuchsia-400/60 focus:ring-2 focus:ring-fuchsia-500/20 transition-[border-color,box-shadow] duration-150 mb-4"
             />
             <label className="block text-xs font-medium text-neutral-500 mb-1.5">
               Contact info (optional, shown bottom-left)
@@ -610,20 +622,20 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
               value={contact}
               onChange={e => setContact(e.target.value)}
               rows={3}
-              className="w-full border border-neutral-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-neutral-400 resize-none"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-600 outline-none focus:border-fuchsia-400/60 focus:ring-2 focus:ring-fuchsia-500/20 transition-[border-color,box-shadow] duration-150 resize-none"
               style={{ overflow: 'auto' }}
             />
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowExport(false)}
-                className="flex-1 text-sm text-neutral-500 border border-neutral-200 rounded-lg py-2.5 hover:bg-neutral-50 transition-colors"
+                className="pressable flex-1 text-sm text-neutral-400 border border-white/10 rounded-xl py-2.5 hover:bg-white/5 hover:text-neutral-200"
               >
                 Cancel
               </button>
               <button
                 onClick={handleExport}
                 disabled={exporting}
-                className="flex-1 text-sm bg-neutral-900 text-white rounded-lg py-2.5 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
+                className="pressable flex-1 text-sm grad-bg text-white font-medium rounded-xl py-2.5 hover:brightness-110 disabled:opacity-40"
               >
                 {exporting ? 'Exporting…' : 'Download PDF'}
               </button>

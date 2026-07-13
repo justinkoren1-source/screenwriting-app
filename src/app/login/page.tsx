@@ -47,25 +47,37 @@ export default function LoginPage() {
     }
   }
 
+  const inputClass =
+    'w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-600 outline-none focus:border-fuchsia-400/60 focus:ring-2 focus:ring-fuchsia-500/20 transition-[border-color,box-shadow] duration-150'
+
   return (
-    <main className="min-h-screen bg-neutral-50 flex items-center justify-center p-4">
-      <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm w-full max-w-md p-8">
-        <h1 className="text-xl font-semibold text-neutral-900 mb-1">
+    <main className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-[720px] h-[480px] rounded-full opacity-25 blur-3xl"
+        style={{ background: 'radial-gradient(ellipse at center, #7c3aed 0%, #ec4899 45%, transparent 70%)' }}
+      />
+
+      <div className="fade-up relative bg-[#17171f] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md p-8">
+        <div className="w-14 h-14 rounded-2xl grad-bg flex items-center justify-center text-2xl mb-5 shadow-lg shadow-fuchsia-500/25">
+          🎬
+        </div>
+        <h1 className="text-xl font-bold text-white mb-1" style={{ textWrap: 'balance' }}>
           {mode === 'signin' ? 'Welcome back' : 'Create your account'}
         </h1>
-        <p className="text-sm text-neutral-400 mb-6">
+        <p className="text-sm text-neutral-400 mb-6" style={{ textWrap: 'pretty' }}>
           {mode === 'signin'
             ? 'Sign in to access your scripts anywhere'
             : 'Your scripts will be saved to your account'}
         </p>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
+          <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl px-4 py-3 mb-4">
             {error}
           </div>
         )}
         {notice && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-lg px-4 py-3 mb-4">
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm rounded-xl px-4 py-3 mb-4">
             {notice}
           </div>
         )}
@@ -77,7 +89,7 @@ export default function LoginPage() {
           placeholder="you@example.com"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          className="w-full border border-neutral-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-neutral-400 mb-4"
+          className={`${inputClass} mb-4`}
         />
         <label className="block text-xs font-medium text-neutral-500 mb-1.5">Password</label>
         <input
@@ -87,37 +99,37 @@ export default function LoginPage() {
           value={password}
           onChange={e => setPassword(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && submit()}
-          className="w-full border border-neutral-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-neutral-400"
+          className={inputClass}
         />
 
         <button
           onClick={submit}
           disabled={busy || !email.trim() || !password}
-          className="w-full bg-neutral-900 text-white text-sm rounded-lg py-2.5 mt-6 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
+          className="pressable w-full grad-bg text-white text-sm font-medium rounded-xl py-3 mt-6 hover:brightness-110 disabled:opacity-40 shadow-lg shadow-fuchsia-500/20"
         >
           {busy ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
         </button>
 
-        <p className="text-sm text-neutral-400 text-center mt-5">
+        <p className="text-sm text-neutral-500 text-center mt-5">
           {mode === 'signin' ? (
             <>
               No account?{' '}
-              <button onClick={() => { setMode('signup'); setError(null) }} className="text-neutral-900 font-medium hover:underline">
+              <button onClick={() => { setMode('signup'); setError(null) }} className="text-white font-medium hover:underline">
                 Create one
               </button>
             </>
           ) : (
             <>
               Already have an account?{' '}
-              <button onClick={() => { setMode('signin'); setError(null) }} className="text-neutral-900 font-medium hover:underline">
+              <button onClick={() => { setMode('signin'); setError(null) }} className="text-white font-medium hover:underline">
                 Sign in
               </button>
             </>
           )}
         </p>
 
-        <p className="text-xs text-neutral-300 text-center mt-6">
-          <button onClick={() => router.push('/')} className="hover:text-neutral-500 transition-colors">
+        <p className="text-xs text-neutral-600 text-center mt-6">
+          <button onClick={() => router.push('/')} className="hover:text-neutral-400 transition-colors duration-150 px-2 py-2">
             ← Continue without an account
           </button>
         </p>
