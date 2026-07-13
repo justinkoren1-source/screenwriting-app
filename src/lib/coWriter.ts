@@ -1,4 +1,4 @@
-import type { Block, Doc, ElementType } from './types'
+import type { Block, Brief, Doc, ElementType } from './types'
 
 /** The AI's daily message allowance per user (guards against runaway cost). */
 export const DAILY_MESSAGE_CAP = 100
@@ -77,9 +77,27 @@ function blocksToScript(blocks: Block[]): string {
  * Build the system prompt: the co-writer persona plus the full contents of the
  * project's documents, so every answer is grounded in the user's actual work.
  */
-export function buildSystemPrompt(projectName: string, documents: Doc[]): string {
+const BRIEF_FIELDS: { key: keyof Brief; label: string }[] = [
+  { key: 'logline', label: 'Logline' },
+  { key: 'format', label: 'Format & length' },
+  { key: 'tone', label: 'Genre & tone' },
+  { key: 'protagonist', label: 'Protagonist (want vs. need)' },
+  { key: 'conflict', label: 'Central conflict' },
+  { key: 'theme', label: 'What it\'s really about' },
+  { key: 'comps', label: 'In the vein of' },
+]
+
+function briefToText(brief: Brief): string {
+  const lines = BRIEF_FIELDS
+    .filter(f => (brief[f.key] ?? '').trim())
+    .map(f => `${f.label}: ${brief[f.key]!.trim()}`)
+  return lines.join('\n')
+}
+
+export function buildSystemPrompt(projectName: string, brief: Brief | undefined, documents: Doc[]): string {
   const screenplay = documents.find(d => d.kind === 'screenplay')
   const notes = documents.filter(d => d.kind === 'note')
+  const briefText = brief ? briefToText(brief) : ''
 
   const parts: string[] = [
     `You are a screenwriting co-writer working alongside the writer on their screenplay "${projectName}". You are a collaborator, not a ghostwriter: the story, characters, and voice are theirs. Your job is to help them write faster and better while keeping everything grounded in what they have already written and what they are going for.`,
@@ -101,6 +119,13 @@ export function buildSystemPrompt(projectName: string, documents: Doc[]): string
     `</insert>`,
     `- Only use <insert> for content meant to go INTO the script. Keep discussion, analysis, and questions as normal prose. Never put your explanation inside an <insert> block.`,
     ``,
+    ...(briefText
+      ? [
+          `=== THE WRITER'S BRIEF (their stated intent — treat this as the source of truth for what the story is trying to be; keep your help aligned with it) ===`,
+          briefText,
+          ``,
+        ]
+      : []),
     `=== THE SCREENPLAY ===`,
     screenplay && screenplay.blocks && screenplay.blocks.length
       ? blocksToScript(screenplay.blocks)

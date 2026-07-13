@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { getProjects, createProject, deleteProject, saveDocument } from '@/lib/storage'
+import { getProjects, createProject, deleteProject, saveDocument, saveProjectMeta } from '@/lib/storage'
 import { supabase } from '@/lib/supabase'
-import type { Project } from '@/lib/types'
+import type { Brief, Project } from '@/lib/types'
+import { briefHasContent } from '@/lib/types'
+import BriefFields from '@/components/BriefFields'
 
 // Each project gets a stable gradient tile based on its name
 const TILE_GRADIENTS = [
@@ -25,6 +27,8 @@ export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [showModal, setShowModal] = useState(false)
   const [projectName, setProjectName] = useState('')
+  const [brief, setBrief] = useState<Brief>({})
+  const [briefOpen, setBriefOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -58,12 +62,22 @@ export default function HomePage() {
     if (!name) return
     try {
       const { project, screenplayId } = await createProject(name)
+      if (briefHasContent(brief)) {
+        await saveProjectMeta({ ...project, brief, updatedAt: new Date().toISOString() })
+      }
       router.push(`/project/${project.id}/doc/${screenplayId}`)
     } catch (e) {
       console.error(e)
       setImportError('Could not create the script. Are you online?')
       setShowModal(false)
     }
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setProjectName('')
+    setBrief({})
+    setBriefOpen(false)
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -290,11 +304,9 @@ export default function HomePage() {
       {showModal && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={e => {
-            if (e.target === e.currentTarget) { setShowModal(false); setProjectName('') }
-          }}
+          onClick={e => { if (e.target === e.currentTarget) closeModal() }}
         >
-          <div className="fade-up bg-[#17171f] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md p-8">
+          <div className="fade-up bg-[#17171f] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md p-8 max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-semibold text-white mb-1">New Script</h2>
             <p className="text-sm text-neutral-400 mb-6">Give your screenplay a title to get started</p>
             <input
@@ -304,12 +316,32 @@ export default function HomePage() {
               placeholder="e.g. The Dark Knight"
               value={projectName}
               onChange={e => setProjectName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              onKeyDown={e => e.key === 'Enter' && !briefOpen && handleCreate()}
               className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-600 outline-none focus:border-fuchsia-400/60 focus:ring-2 focus:ring-fuchsia-500/20 transition-[border-color,box-shadow] duration-150"
             />
+
+            {/* Optional Story Brief — collapsed by default so writers can just start */}
+            <button
+              onClick={() => setBriefOpen(o => !o)}
+              className="mt-4 flex items-center gap-2 text-xs text-fuchsia-200/80 hover:text-fuchsia-200 transition-colors"
+            >
+              <svg
+                className={`w-3.5 h-3.5 transition-transform ${briefOpen ? 'rotate-90' : ''}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              Add a story brief (optional) — helps the co-writer from day one
+            </button>
+            {briefOpen && (
+              <div className="mt-4">
+                <BriefFields value={brief} onChange={setBrief} />
+              </div>
+            )}
+
             <div className="flex gap-3 mt-6">
               <button
-                onClick={() => { setShowModal(false); setProjectName('') }}
+                onClick={closeModal}
                 className="pressable flex-1 text-sm text-neutral-400 border border-white/10 rounded-xl py-2.5 hover:bg-white/5 hover:text-neutral-200"
               >
                 Cancel

@@ -2,8 +2,20 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getProject, createDocument, deleteDocument } from '@/lib/storage'
-import type { Doc, Project } from '@/lib/types'
+import { getProject, createDocument, deleteDocument, saveProjectMeta } from '@/lib/storage'
+import type { Brief, Doc, Project } from '@/lib/types'
+import { briefHasContent } from '@/lib/types'
+import BriefFields from '@/components/BriefFields'
+
+const BRIEF_SUMMARY: { key: keyof Brief; label: string }[] = [
+  { key: 'logline', label: 'Logline' },
+  { key: 'format', label: 'Format' },
+  { key: 'tone', label: 'Tone' },
+  { key: 'protagonist', label: 'Protagonist' },
+  { key: 'conflict', label: 'Conflict' },
+  { key: 'theme', label: 'Theme' },
+  { key: 'comps', label: 'In the vein of' },
+]
 
 const KIND_META: Record<string, { label: string; icon: string; tile: string }> = {
   screenplay: { label: 'Screenplay', icon: '🎬', tile: 'linear-gradient(135deg, #7c3aed, #ec4899)' },
@@ -17,6 +29,9 @@ export default function ProjectPage() {
   const [showModal, setShowModal] = useState(false)
   const [docTitle, setDocTitle] = useState('')
   const [busy, setBusy] = useState(false)
+  const [briefModal, setBriefModal] = useState(false)
+  const [briefDraft, setBriefDraft] = useState<Brief>({})
+  const [savingBrief, setSavingBrief] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +55,25 @@ export default function ProjectPage() {
     } catch (e) {
       console.error(e)
       setBusy(false)
+    }
+  }
+
+  const openBrief = () => {
+    setBriefDraft(project?.brief ?? {})
+    setBriefModal(true)
+  }
+
+  const saveBrief = async () => {
+    if (!project || savingBrief) return
+    setSavingBrief(true)
+    try {
+      await saveProjectMeta({ ...project, brief: briefDraft, updatedAt: new Date().toISOString() })
+      setProject({ ...project, brief: briefDraft })
+      setBriefModal(false)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSavingBrief(false)
     }
   }
 
@@ -98,6 +132,40 @@ export default function ProjectPage() {
       </header>
 
       <div className="relative max-w-2xl mx-auto px-8 py-10">
+        {/* Story Brief — the writer's intent, feeds the co-writer */}
+        {briefHasContent(project.brief) ? (
+          <button
+            onClick={openBrief}
+            className="fade-up w-full text-left mb-4 bg-gradient-to-br from-fuchsia-500/10 to-violet-500/10 border border-fuchsia-400/20 rounded-2xl px-5 py-4 hover:border-fuchsia-400/40 transition-colors group"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold grad-text uppercase tracking-wider">✨ Story Brief</span>
+              <span className="text-xs text-neutral-500 group-hover:text-neutral-300 transition-colors">Edit</span>
+            </div>
+            {project.brief!.logline?.trim() && (
+              <p className="text-sm text-neutral-200 italic mb-1.5">“{project.brief!.logline.trim()}”</p>
+            )}
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+              {BRIEF_SUMMARY.filter(f => f.key !== 'logline' && (project.brief![f.key] ?? '').trim()).map(f => (
+                <span key={f.key} className="text-[11px] text-neutral-500">
+                  <span className="text-neutral-600">{f.label}:</span>{' '}
+                  <span className="text-neutral-400">{project.brief![f.key]}</span>
+                </span>
+              ))}
+            </div>
+          </button>
+        ) : (
+          <button
+            onClick={openBrief}
+            className="fade-up w-full text-left mb-4 bg-[#17171f] border border-dashed border-white/15 rounded-2xl px-5 py-4 hover:border-fuchsia-400/40 transition-colors"
+          >
+            <p className="text-sm text-neutral-200 font-medium">✨ Set up your story brief</p>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              A few optional questions about your idea — the more you add, the sharper the co-writer.
+            </p>
+          </button>
+        )}
+
         <div className="space-y-2.5">
           {sorted.map((doc, i) => {
             const meta = KIND_META[doc.kind]
@@ -181,6 +249,36 @@ export default function ProjectPage() {
                 className="pressable flex-1 text-sm grad-bg text-white font-medium rounded-xl py-2.5 hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {busy ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {briefModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={e => { if (e.target === e.currentTarget) setBriefModal(false) }}
+        >
+          <div className="fade-up bg-[#17171f] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md p-8 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-semibold text-white mb-1">Story Brief</h2>
+            <p className="text-sm text-neutral-400 mb-6" style={{ textWrap: 'pretty' }}>
+              Your intent for the story. All optional — the co-writer treats this as the source of truth for what you&rsquo;re going for.
+            </p>
+            <BriefFields value={briefDraft} onChange={setBriefDraft} />
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setBriefModal(false)}
+                className="pressable flex-1 text-sm text-neutral-400 border border-white/10 rounded-xl py-2.5 hover:bg-white/5 hover:text-neutral-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveBrief}
+                disabled={savingBrief}
+                className="pressable flex-1 text-sm grad-bg text-white font-medium rounded-xl py-2.5 hover:brightness-110 disabled:opacity-40"
+              >
+                {savingBrief ? 'Saving…' : 'Save brief'}
               </button>
             </div>
           </div>

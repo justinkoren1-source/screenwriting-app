@@ -51,6 +51,7 @@ interface ProjectRow {
   name: string
   author: string | null
   contact: string | null
+  brief: Project['brief'] | null
   created_at: string
   updated_at: string
 }
@@ -72,6 +73,7 @@ function rowToProject(r: ProjectRow): Project {
     name: r.name,
     author: r.author ?? undefined,
     contact: r.contact ?? undefined,
+    brief: r.brief ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -136,7 +138,7 @@ export async function getProject(id: string): Promise<Project | null> {
     }
   }
   const [projectRes, docsRes] = await Promise.all([
-    supabase.from('projects').select('id, name, author, contact, created_at, updated_at').eq('id', id).maybeSingle(),
+    supabase.from('projects').select('id, name, author, contact, brief, created_at, updated_at').eq('id', id).maybeSingle(),
     supabase.from('documents').select('id, project_id, kind, title, created_at, updated_at').eq('project_id', id).order('created_at'),
   ])
   if (projectRes.error) throw projectRes.error
@@ -181,13 +183,19 @@ export async function saveProjectMeta(project: Project): Promise<void> {
   if (!uid) {
     const all = loadLocal()
     const idx = all.findIndex(p => p.id === project.id)
-    if (idx >= 0) all[idx] = { ...all[idx], name: project.name, author: project.author, contact: project.contact, updatedAt: project.updatedAt }
+    if (idx >= 0) all[idx] = { ...all[idx], name: project.name, author: project.author, contact: project.contact, brief: project.brief, updatedAt: project.updatedAt }
     persistLocal(all)
     return
   }
   const { error } = await supabase
     .from('projects')
-    .update({ name: project.name, author: project.author ?? null, contact: project.contact ?? null, updated_at: project.updatedAt })
+    .update({
+      name: project.name,
+      author: project.author ?? null,
+      contact: project.contact ?? null,
+      brief: project.brief ?? null,
+      updated_at: project.updatedAt,
+    })
     .eq('id', project.id)
   if (error) throw error
 }

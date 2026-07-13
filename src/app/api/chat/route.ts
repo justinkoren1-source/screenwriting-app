@@ -70,7 +70,7 @@ export async function POST(req: Request) {
   // ── Load the project's documents (RLS ensures they belong to this user) ───
   const { data: project, error: projErr } = await supa
     .from('projects')
-    .select('id, name')
+    .select('id, name, brief')
     .eq('id', projectId)
     .maybeSingle()
   if (projErr || !project) return json({ error: 'Project not found.' }, 404)
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
     content: message,
   })
 
-  const systemPrompt = buildSystemPrompt(project.name, documents)
+  const systemPrompt = buildSystemPrompt(project.name, project.brief ?? undefined, documents)
   const anthropic = new Anthropic()
 
   // ── Stream the reply, then persist it ─────────────────────────────────────
