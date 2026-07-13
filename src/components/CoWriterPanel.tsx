@@ -19,11 +19,12 @@ const ELEMENT_LABEL: Record<ElementType, string> = {
 
 interface Props {
   project: Project
+  docId: string
   onInsert: (blocks: { type: ElementType; text: string }[]) => void
   onClose: () => void
 }
 
-export default function CoWriterPanel({ project, onInsert, onClose }: Props) {
+export default function CoWriterPanel({ project, docId, onInsert, onClose }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -59,7 +60,7 @@ export default function CoWriterPanel({ project, onInsert, onClose }: Props) {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ projectId: project.id, message: text }),
+        body: JSON.stringify({ projectId: project.id, docId, message: text }),
       })
 
       if (!res.ok || !res.body) {
@@ -92,7 +93,7 @@ export default function CoWriterPanel({ project, onInsert, onClose }: Props) {
     } finally {
       setBusy(false)
     }
-  }, [input, busy, project.id])
+  }, [input, busy, project.id, docId])
 
   const acceptInsert = (key: string, blocks: { type: ElementType; text: string }[]) => {
     onInsert(blocks)

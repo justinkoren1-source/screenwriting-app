@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Block, Doc, ElementType, Project } from '@/lib/types'
+import { isEpisode, episodeCode } from '@/lib/types'
 import { saveDocument, saveProjectMeta } from '@/lib/storage'
 import { paginate, characterNames, cleanCharacterName } from '@/lib/screenplay'
 import { exportPdf } from '@/lib/pdfExport'
@@ -410,7 +411,8 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
       metaRef.current = { author, contact }
       const meta: Project = { ...initial, author, contact, updatedAt: new Date().toISOString() }
       await saveProjectMeta(meta)
-      await exportPdf(meta, blocks)
+      const episode = isEpisode(doc) ? { code: episodeCode(doc), title: doc.title } : undefined
+      await exportPdf(meta, blocks, episode)
       setShowExport(false)
     } catch (err) {
       console.error('Export failed:', err)
@@ -497,7 +499,11 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
             </svg>
           </button>
         </div>
-        <span className="text-white text-sm font-medium">{initial.name}</span>
+        <span className="text-white text-sm font-medium truncate max-w-[40%]">
+          {isEpisode(doc)
+            ? <><span className="text-cyan-300/80 mr-1.5">{episodeCode(doc)}</span>{doc.title}</>
+            : initial.name}
+        </span>
         <div className="flex items-center gap-4">
           <span className="text-xs text-amber-400/90" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {pagination.totalPages} {pagination.totalPages === 1 ? 'page' : 'pages'}
@@ -685,6 +691,7 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
         {coWriterOpen && (
           <CoWriterPanel
             project={initial}
+            docId={doc.id}
             onInsert={insertBlocks}
             onClose={() => setCoWriterOpen(false)}
           />

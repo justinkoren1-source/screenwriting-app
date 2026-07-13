@@ -63,6 +63,8 @@ interface DocRow {
   title: string
   blocks: Block[] | null
   content: string | null
+  season: number | null
+  episode_number: number | null
   created_at: string
   updated_at: string
 }
@@ -87,6 +89,8 @@ function rowToDoc(r: DocRow): Doc {
     title: r.title,
     blocks: r.blocks ?? undefined,
     content: r.content ?? undefined,
+    season: r.season ?? undefined,
+    episodeNumber: r.episode_number ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -101,6 +105,8 @@ function docToRow(d: Doc, userId: string) {
     title: d.title,
     blocks: d.blocks ?? null,
     content: d.content ?? null,
+    season: d.season ?? null,
+    episode_number: d.episodeNumber ?? null,
     created_at: d.createdAt,
     updated_at: d.updatedAt,
   }
@@ -139,7 +145,7 @@ export async function getProject(id: string): Promise<Project | null> {
   }
   const [projectRes, docsRes] = await Promise.all([
     supabase.from('projects').select('id, name, author, contact, brief, created_at, updated_at').eq('id', id).maybeSingle(),
-    supabase.from('documents').select('id, project_id, kind, title, created_at, updated_at').eq('project_id', id).order('created_at'),
+    supabase.from('documents').select('id, project_id, kind, title, season, episode_number, created_at, updated_at').eq('project_id', id).order('created_at'),
   ])
   if (projectRes.error) throw projectRes.error
   if (docsRes.error) throw docsRes.error
@@ -245,7 +251,12 @@ export async function saveDocument(doc: Doc): Promise<void> {
   if (error) throw error
 }
 
-export async function createDocument(projectId: string, kind: DocKind, title: string): Promise<Doc> {
+export async function createDocument(
+  projectId: string,
+  kind: DocKind,
+  title: string,
+  meta?: { season?: number; episodeNumber?: number },
+): Promise<Doc> {
   const now = new Date().toISOString()
   const doc: Doc = {
     id: crypto.randomUUID(),
@@ -254,6 +265,8 @@ export async function createDocument(projectId: string, kind: DocKind, title: st
     title,
     blocks: kind === 'screenplay' ? [{ id: crypto.randomUUID(), type: 'scene-header', text: '' }] : undefined,
     content: kind === 'note' ? '' : undefined,
+    season: meta?.season,
+    episodeNumber: meta?.episodeNumber,
     createdAt: now,
     updatedAt: now,
   }

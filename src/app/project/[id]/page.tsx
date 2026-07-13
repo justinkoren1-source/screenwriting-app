@@ -4,9 +4,17 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getProject, createDocument, deleteDocument, saveProjectMeta } from '@/lib/storage'
 import { supabase } from '@/lib/supabase'
-import type { Brief, Doc, Project } from '@/lib/types'
-import { briefHasContent } from '@/lib/types'
+import type { Brief, Doc, DocKind, Project } from '@/lib/types'
+import { briefHasContent, isEpisode, episodeCode } from '@/lib/types'
 import BriefFields from '@/components/BriefFields'
+
+type NewKind = 'episode' | 'screenplay' | 'note'
+
+const NEW_OPTIONS: { kind: NewKind; label: string; hint: string; icon: string }[] = [
+  { kind: 'episode', label: 'Episode', hint: 'A numbered TV episode', icon: '📺' },
+  { kind: 'screenplay', label: 'Screenplay', hint: 'A standalone script or film', icon: '🎬' },
+  { kind: 'note', label: 'Note', hint: 'Research, bios, outline', icon: '📝' },
+]
 
 const BRIEF_SUMMARY: { key: keyof Brief; label: string }[] = [
   { key: 'logline', label: 'Logline' },
@@ -18,17 +26,15 @@ const BRIEF_SUMMARY: { key: keyof Brief; label: string }[] = [
   { key: 'comps', label: 'In the vein of' },
 ]
 
-const KIND_META: Record<string, { label: string; icon: string; tile: string }> = {
-  screenplay: { label: 'Screenplay', icon: '🎬', tile: 'linear-gradient(135deg, #7c3aed, #ec4899)' },
-  note: { label: 'Note', icon: '📝', tile: 'linear-gradient(135deg, #f59e0b, #ef4444)' },
-}
-
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [project, setProject] = useState<Project | null>(null)
-  const [showModal, setShowModal] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [newKind, setNewKind] = useState<NewKind | null>(null)
   const [docTitle, setDocTitle] = useState('')
+  const [season, setSeason] = useState(1)
+  const [episodeNumber, setEpisodeNumber] = useState(1)
   const [busy, setBusy] = useState(false)
   const [briefModal, setBriefModal] = useState(false)
   const [briefDraft, setBriefDraft] = useState<Brief>({})
@@ -51,12 +57,31 @@ export default function ProjectPage() {
     })
   }, [load, router])
 
+  const startNew = (kind: NewKind) => {
+    setMenuOpen(false)
+    setNewKind(kind)
+    setDocTitle('')
+    if (kind === 'episode') {
+      // Suggest the next episode number in the highest existing season
+      const eps = (project?.documents ?? []).filter(d => d.episodeNumber != null)
+      const maxSeason = eps.reduce((m, d) => Math.max(m, d.season ?? 1), 1)
+      const inSeason = eps.filter(d => (d.season ?? 1) === maxSeason)
+      const nextNum = inSeason.reduce((m, d) => Math.max(m, d.episodeNumber ?? 0), 0) + 1
+      setSeason(maxSeason)
+      setEpisodeNumber(nextNum)
+    }
+  }
+
+  const closeNew = () => { setNewKind(null); setDocTitle('') }
+
   const handleCreateDoc = async () => {
     const title = docTitle.trim()
-    if (!title || busy) return
+    if (!title || busy || !newKind) return
     setBusy(true)
     try {
-      const doc = await createDocument(id, 'note', title)
+      const kind: DocKind = newKind === 'note' ? 'note' : 'screenplay'
+      const meta = newKind === 'episode' ? { season, episodeNumber } : undefined
+      const doc = await createDocument(id, kind, title, meta)
       router.push(`/project/${id}/doc/${doc.id}`)
     } catch (e) {
       console.error(e)
@@ -97,9 +122,19 @@ export default function ProjectPage() {
   if (!project) return <div className="min-h-screen" />
 
   const docs = project.documents ?? []
-  const sorted = [...docs].sort((a, b) =>
-    a.kind === b.kind ? a.createdAt.localeCompare(b.createdAt) : a.kind === 'screenplay' ? -1 : 1
-  )
+  const screenplayCount = docs.filter(d => d.kind === 'screenplay').length
+  const sorted = [...docs].sort((a, b) => {
+    // Screenplays/episodes first (ordered by season, then episode #, then created),
+    // notes after (by created)
+    if (a.kind !== b.kind) return a.kind === 'screenplay' ? -1 : 1
+    if (a.kind === 'screenplay') {
+      const sa = a.season ?? 0, sb = b.season ?? 0
+      if (sa !== sb) return sa - sb
+      const ea = a.episodeNumber ?? 0, eb = b.episodeNumber ?? 0
+      if (ea !== eb) return ea - eb
+    }
+    return a.createdAt.localeCompare(b.createdAt)
+  })
 
   return (
     <main className="min-h-screen relative overflow-x-hidden">
@@ -128,12 +163,37 @@ export default function ProjectPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="pressable grad-bg text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg shadow-fuchsia-500/20 hover:shadow-fuchsia-500/40 hover:brightness-110 shrink-0"
-          >
-            + New Document
-          </button>
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              className="pressable grad-bg text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg shadow-fuchsia-500/20 hover:shadow-fuchsia-500/40 hover:brightness-110 flex items-center gap-1.5"
+            >
+              + New
+              <svg className={`w-3.5 h-3.5 transition-transform ${menuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                <div className="fade-up absolute right-0 mt-2 w-64 bg-[#1a1a24] border border-white/10 rounded-2xl shadow-2xl z-20 overflow-hidden p-1.5">
+                  {NEW_OPTIONS.map(opt => (
+                    <button
+                      key={opt.kind}
+                      onClick={() => startNew(opt.kind)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors text-left"
+                    >
+                      <span className="text-lg">{opt.icon}</span>
+                      <span>
+                        <span className="block text-sm text-neutral-100">{opt.label}</span>
+                        <span className="block text-xs text-neutral-500">{opt.hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -174,7 +234,16 @@ export default function ProjectPage() {
 
         <div className="space-y-2.5">
           {sorted.map((doc, i) => {
-            const meta = KIND_META[doc.kind]
+            const ep = isEpisode(doc)
+            const icon = doc.kind === 'note' ? '📝' : ep ? '📺' : '🎬'
+            const tile = doc.kind === 'note'
+              ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+              : ep
+                ? 'linear-gradient(135deg, #06b6d4, #7c3aed)'
+                : 'linear-gradient(135deg, #7c3aed, #ec4899)'
+            const label = doc.kind === 'note' ? 'Note' : ep ? 'Episode' : 'Screenplay'
+            // Screenplays are deletable only when more than one exists (never leave a project with zero)
+            const canDelete = doc.kind === 'note' || screenplayCount > 1
             return (
               <div
                 key={doc.id}
@@ -185,21 +254,24 @@ export default function ProjectPage() {
                 <div className="flex items-center gap-3.5 min-w-0">
                   <div
                     className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center text-xl"
-                    style={{ background: meta.tile }}
+                    style={{ background: tile }}
                   >
-                    {meta.icon}
+                    {icon}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-medium text-neutral-100 text-sm truncate">{doc.title}</p>
+                    <p className="font-medium text-neutral-100 text-sm truncate">
+                      {ep && <span className="text-cyan-300/80 mr-1.5" style={{ fontVariantNumeric: 'tabular-nums' }}>{episodeCode(doc)}</span>}
+                      {doc.title}
+                    </p>
                     <p className="text-xs text-neutral-500 mt-0.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                      {meta.label} · edited {new Date(doc.updatedAt).toLocaleDateString('en-US', {
+                      {label} · edited {new Date(doc.updatedAt).toLocaleDateString('en-US', {
                         month: 'short', day: 'numeric',
                       })}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  {doc.kind !== 'screenplay' && (
+                  {canDelete && (
                     <button
                       onClick={e => handleDeleteDoc(e, doc)}
                       className="text-xs text-neutral-600 hover:text-red-400 transition-colors duration-150 opacity-0 group-hover:opacity-100 px-2 py-2"
@@ -224,19 +296,60 @@ export default function ProjectPage() {
         </p>
       </div>
 
-      {showModal && (
+      {newKind && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={e => { if (e.target === e.currentTarget) { setShowModal(false); setDocTitle('') } }}
+          onClick={e => { if (e.target === e.currentTarget) closeNew() }}
         >
           <div className="fade-up bg-[#17171f] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md p-8">
-            <h2 className="text-xl font-semibold text-white mb-1">New Document</h2>
-            <p className="text-sm text-neutral-400 mb-6">A notes page inside this project</p>
+            <h2 className="text-xl font-semibold text-white mb-1">
+              {newKind === 'episode' ? 'New Episode' : newKind === 'screenplay' ? 'New Screenplay' : 'New Note'}
+            </h2>
+            <p className="text-sm text-neutral-400 mb-6">
+              {newKind === 'episode'
+                ? 'A numbered episode in this series'
+                : newKind === 'screenplay'
+                  ? 'A standalone script inside this project'
+                  : 'A notes page inside this project'}
+            </p>
+
+            {newKind === 'episode' && (
+              <div className="flex gap-3 mb-3">
+                <div className="w-24">
+                  <label className="block text-xs font-medium text-neutral-400 mb-1">Season</label>
+                  <input
+                    type="number" min={1} max={999}
+                    value={season}
+                    onChange={e => setSeason(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-fuchsia-400/60"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="block text-xs font-medium text-neutral-400 mb-1">Episode</label>
+                  <input
+                    type="number" min={1} max={9999}
+                    value={episodeNumber}
+                    onChange={e => setEpisodeNumber(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-fuchsia-400/60"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <label className="block text-xs font-medium text-neutral-400 mb-1">
+              {newKind === 'episode' ? 'Episode title' : 'Title'}
+            </label>
             <input
               autoFocus
               type="text"
               maxLength={200}
-              placeholder="e.g. General Notes, Character Bios, Research"
+              placeholder={
+                newKind === 'episode' ? 'e.g. Pilot'
+                  : newKind === 'screenplay' ? 'e.g. The Dark Knight'
+                    : 'e.g. General Notes, Character Bios, Research'
+              }
               value={docTitle}
               onChange={e => setDocTitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleCreateDoc()}
@@ -244,7 +357,7 @@ export default function ProjectPage() {
             />
             <div className="flex gap-3 mt-6">
               <button
-                onClick={() => { setShowModal(false); setDocTitle('') }}
+                onClick={closeNew}
                 className="pressable flex-1 text-sm text-neutral-400 border border-white/10 rounded-xl py-2.5 hover:bg-white/5 hover:text-neutral-200"
               >
                 Cancel
@@ -254,7 +367,7 @@ export default function ProjectPage() {
                 disabled={!docTitle.trim() || busy}
                 className="pressable flex-1 text-sm grad-bg text-white font-medium rounded-xl py-2.5 hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {busy ? 'Creating…' : 'Create'}
+                {busy ? 'Creating…' : newKind === 'note' ? 'Create' : 'Create & write'}
               </button>
             </div>
           </div>

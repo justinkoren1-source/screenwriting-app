@@ -13,6 +13,8 @@ interface DocRow {
   title: string
   blocks: Doc['blocks'] | null
   content: string | null
+  season: number | null
+  episode_number: number | null
   created_at: string
   updated_at: string
 }
@@ -40,13 +42,14 @@ export async function POST(req: Request) {
   const userId = userData.user.id
 
   // ── Validate input ────────────────────────────────────────────────────────
-  let payload: { projectId?: string; message?: string }
+  let payload: { projectId?: string; docId?: string; message?: string }
   try {
     payload = await req.json()
   } catch {
     return json({ error: 'Bad request.' }, 400)
   }
   const projectId = typeof payload.projectId === 'string' ? payload.projectId : ''
+  const docId = typeof payload.docId === 'string' ? payload.docId : ''
   const message = typeof payload.message === 'string' ? payload.message.trim() : ''
   if (!projectId || !message) return json({ error: 'Missing project or message.' }, 400)
   if (message.length > 4000) return json({ error: 'Message is too long.' }, 400)
@@ -75,23 +78,38 @@ export async function POST(req: Request) {
     .maybeSingle()
   if (projErr || !project) return json({ error: 'Project not found.' }, 404)
 
-  const { data: docRows, error: docErr } = await supa
-    .from('documents')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at')
-  if (docErr) return json({ error: 'Could not load documents.' }, 500)
-
-  const documents: Doc[] = (docRows as DocRow[]).map(r => ({
+  const toDoc = (r: DocRow): Doc => ({
     id: r.id,
     projectId: r.project_id,
     kind: r.kind,
     title: r.title,
     blocks: r.blocks ?? undefined,
     content: r.content ?? undefined,
+    season: r.season ?? undefined,
+    episodeNumber: r.episode_number ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-  }))
+  })
+
+  // The open screenplay/episode (with full blocks); notes and sibling episode
+  // titles are shared series context, but other episodes' full scripts are not
+  // loaded (keeps context small and cheap across a whole season).
+  const [screenplayRes, noteRes, otherRes] = await Promise.all([
+    docId
+      ? supa.from('documents').select('*').eq('id', docId).eq('project_id', projectId).maybeSingle()
+      : supa.from('documents').select('*').eq('project_id', projectId).eq('kind', 'screenplay').order('created_at').limit(1).maybeSingle(),
+    supa.from('documents').select('id, project_id, kind, title, content, season, episode_number, created_at, updated_at').eq('project_id', projectId).eq('kind', 'note').order('created_at'),
+    supa.from('documents').select('id, project_id, kind, title, season, episode_number, created_at, updated_at').eq('project_id', projectId).eq('kind', 'screenplay').order('season').order('episode_number'),
+  ])
+  if (screenplayRes.error || noteRes.error || otherRes.error) {
+    return json({ error: 'Could not load documents.' }, 500)
+  }
+
+  const screenplay = screenplayRes.data ? toDoc(screenplayRes.data as DocRow) : undefined
+  const notes = (noteRes.data as DocRow[]).map(r => toDoc({ ...r, blocks: null }))
+  const otherEpisodes = (otherRes.data as DocRow[])
+    .filter(r => r.id !== screenplay?.id)
+    .map(r => toDoc({ ...r, blocks: null, content: null }))
 
   // ── Load recent conversation history ──────────────────────────────────────
   const { data: history } = await supa
@@ -113,7 +131,13 @@ export async function POST(req: Request) {
     content: message,
   })
 
-  const systemPrompt = buildSystemPrompt(project.name, project.brief ?? undefined, documents)
+  const systemPrompt = buildSystemPrompt({
+    projectName: project.name,
+    brief: project.brief ?? undefined,
+    screenplay,
+    notes,
+    otherEpisodes,
+  })
   const anthropic = new Anthropic()
 
   // ── Stream the reply, then persist it ─────────────────────────────────────

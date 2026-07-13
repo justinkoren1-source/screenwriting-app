@@ -32,7 +32,11 @@ const UPPERCASE: Record<ElementType, boolean> = {
   'shot': true,
 }
 
-export async function exportPdf(project: Project, screenplayBlocks: Block[]): Promise<void> {
+export async function exportPdf(
+  project: Project,
+  screenplayBlocks: Block[],
+  episode?: { code: string; title: string },
+): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
   doc.setFont('courier', 'normal')
@@ -45,6 +49,9 @@ export async function exportPdf(project: Project, screenplayBlocks: Block[]): Pr
   // Underline the title
   const titleW = doc.getTextWidth(title)
   doc.line(centerX - titleW / 2, 284, centerX + titleW / 2, 284)
+  if (episode) {
+    doc.text(`${episode.code.replace(/\s·\s/g, '')} — ${episode.title}`.toUpperCase(), centerX, 308, { align: 'center' })
+  }
   doc.text('Written by', centerX, 340, { align: 'center' })
   doc.text(project.author || '', centerX, 376, { align: 'center' })
   if (project.contact) {

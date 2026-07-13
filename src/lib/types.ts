@@ -25,8 +25,23 @@ export interface Doc {
   blocks?: Block[]
   /** Plain-text content (kind === 'note') */
   content?: string
+  /** Episode identity (screenplay docs only; null = standalone screenplay) */
+  season?: number
+  episodeNumber?: number
   createdAt: string
   updatedAt: string
+}
+
+/** True when a screenplay doc is a numbered episode. */
+export function isEpisode(d: Doc): boolean {
+  return d.kind === 'screenplay' && d.episodeNumber != null
+}
+
+/** "S1 · E3" style label for an episode. */
+export function episodeCode(d: Doc): string {
+  if (d.episodeNumber == null) return ''
+  const s = d.season ?? 1
+  return `S${s} · E${d.episodeNumber}`
 }
 
 /** The writer's up-front intent for a project — grounds the co-writer. */

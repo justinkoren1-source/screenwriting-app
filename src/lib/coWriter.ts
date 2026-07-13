@@ -94,13 +94,23 @@ function briefToText(brief: Brief): string {
   return lines.join('\n')
 }
 
-export function buildSystemPrompt(projectName: string, brief: Brief | undefined, documents: Doc[]): string {
-  const screenplay = documents.find(d => d.kind === 'screenplay')
-  const notes = documents.filter(d => d.kind === 'note')
+export function buildSystemPrompt(opts: {
+  projectName: string
+  brief?: Brief
+  screenplay?: Doc
+  notes: Doc[]
+  otherEpisodes?: Doc[]
+}): string {
+  const { projectName, brief, screenplay, notes, otherEpisodes = [] } = opts
   const briefText = brief ? briefToText(brief) : ''
+  const episode = screenplay && screenplay.episodeNumber != null
+  const epCode = episode ? `S${screenplay.season ?? 1} · E${screenplay.episodeNumber}` : ''
+  const openLabel = episode
+    ? `episode "${epCode} — ${screenplay!.title}" of the series "${projectName}"`
+    : `screenplay "${projectName}"`
 
   const parts: string[] = [
-    `You are a screenwriting co-writer working alongside the writer on their screenplay "${projectName}". You are a collaborator, not a ghostwriter: the story, characters, and voice are theirs. Your job is to help them write faster and better while keeping everything grounded in what they have already written and what they are going for.`,
+    `You are a screenwriting co-writer working alongside the writer on their ${openLabel}. You are a collaborator, not a ghostwriter: the story, characters, and voice are theirs. Your job is to help them write faster and better while keeping everything grounded in what they have already written and what they are going for.`,
     ``,
     `How you help:`,
     `- Brainstorm ideas, break writer's block, and think through plot and character WITH the writer.`,
@@ -121,15 +131,28 @@ export function buildSystemPrompt(projectName: string, brief: Brief | undefined,
     ``,
     ...(briefText
       ? [
-          `=== THE WRITER'S BRIEF (their stated intent — treat this as the source of truth for what the story is trying to be; keep your help aligned with it) ===`,
+          `=== THE ${episode ? 'SERIES' : 'WRITER’S'} BRIEF (their stated intent — treat this as the source of truth for what the story is trying to be; keep your help aligned with it) ===`,
           briefText,
           ``,
         ]
       : []),
-    `=== THE SCREENPLAY ===`,
+    ...(otherEpisodes.length
+      ? [
+          `=== OTHER EPISODES IN THIS SERIES (titles only, for continuity — you do NOT have their full scripts here; ask the writer if you need details from another episode) ===`,
+          otherEpisodes
+            .map(e =>
+              e.episodeNumber != null
+                ? `S${e.season ?? 1} · E${e.episodeNumber} — ${e.title}`
+                : e.title,
+            )
+            .join('\n'),
+          ``,
+        ]
+      : []),
+    `=== ${episode ? `THIS EPISODE (${epCode} — ${screenplay!.title})` : 'THE SCREENPLAY'} — this is what you are helping write right now ===`,
     screenplay && screenplay.blocks && screenplay.blocks.length
       ? blocksToScript(screenplay.blocks)
-      : '(The screenplay is empty so far.)',
+      : '(Empty so far.)',
   ]
 
   for (const note of notes) {
