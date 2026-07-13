@@ -6,6 +6,7 @@ import type { Block, Doc, ElementType, Project } from '@/lib/types'
 import { saveDocument, saveProjectMeta } from '@/lib/storage'
 import { paginate, characterNames, cleanCharacterName } from '@/lib/screenplay'
 import { exportPdf } from '@/lib/pdfExport'
+import CoWriterPanel from './CoWriterPanel'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +127,7 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [coWriterOpen, setCoWriterOpen] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [author, setAuthor] = useState(initial.author ?? '')
   const [contact, setContact] = useState(initial.contact ?? '')
@@ -247,6 +249,33 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
       return next
     })
   }, [scheduleSave])
+
+  // ── Insert AI-proposed blocks (approve-to-insert from the co-writer) ──────
+
+  const insertBlocks = useCallback((incoming: { type: ElementType; text: string }[]) => {
+    if (!incoming.length) return
+    const newBlocks: Block[] = incoming.map(b => ({
+      id: crypto.randomUUID(),
+      type: b.type,
+      text: UPPERCASE_TYPES.has(b.type) ? b.text.toUpperCase() : b.text,
+    }))
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === activeId)
+      let next: Block[]
+      if (idx !== -1 && prev[idx].text.trim() === '') {
+        // Replace the empty active block
+        next = [...prev.slice(0, idx), ...newBlocks, ...prev.slice(idx + 1)]
+      } else {
+        const at = idx === -1 ? prev.length : idx + 1
+        next = [...prev.slice(0, at), ...newBlocks, ...prev.slice(at)]
+      }
+      scheduleSave(next)
+      return next
+    })
+    const lastId = newBlocks[newBlocks.length - 1].id
+    setActiveId(lastId)
+    setPendingFocusId(lastId)
+  }, [activeId, scheduleSave])
 
   // ── Auto (CONT'D): same speaker continues after action in the same scene ──
 
@@ -444,6 +473,17 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
             {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
           </span>
           <button
+            onClick={() => setCoWriterOpen(o => !o)}
+            className={[
+              'pressable text-xs font-medium px-3.5 py-2 rounded-lg transition-colors',
+              coWriterOpen
+                ? 'bg-white/15 text-white'
+                : 'text-fuchsia-200 border border-fuchsia-400/40 hover:bg-fuchsia-500/10',
+            ].join(' ')}
+          >
+            ✨ Co-writer
+          </button>
+          <button
             onClick={() => setShowExport(true)}
             className="pressable grad-bg text-white text-xs font-medium px-3.5 py-2 rounded-lg shadow-md shadow-fuchsia-500/20 hover:brightness-110"
           >
@@ -591,6 +631,14 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
             ))}
           </div>
         </div>
+
+        {coWriterOpen && (
+          <CoWriterPanel
+            project={initial}
+            onInsert={insertBlocks}
+            onClose={() => setCoWriterOpen(false)}
+          />
+        )}
       </div>
 
       {/* Export modal */}

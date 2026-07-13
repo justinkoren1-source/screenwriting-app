@@ -267,6 +267,26 @@ export async function deleteDocument(id: string): Promise<void> {
   if (error) throw error
 }
 
+// ── Chat (co-writer) ─────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/** Load saved co-writer conversation for a project (cloud only). */
+export async function getChatMessages(projectId: string): Promise<ChatMessage[]> {
+  const uid = await currentUserId()
+  if (!uid) return []
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('role, content')
+    .eq('project_id', projectId)
+    .order('created_at')
+  if (error) throw error
+  return (data ?? []) as ChatMessage[]
+}
+
 // ── Guest → cloud migration ──────────────────────────────────────────────────
 
 /**
