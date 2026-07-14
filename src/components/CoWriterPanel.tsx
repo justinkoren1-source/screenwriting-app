@@ -17,6 +17,77 @@ const ELEMENT_LABEL: Record<ElementType, string> = {
   'shot': 'Shot',
 }
 
+// Quick-start prompts, grouped by what writers most commonly need
+const PROMPT_CATEGORIES: { icon: string; title: string; prompts: string[] }[] = [
+  {
+    icon: '🚧', title: 'Get unstuck', prompts: [
+      "I'm stuck — what could happen next?",
+      'Give me a few ways this scene could end.',
+      'How do the characters get out of this?',
+    ],
+  },
+  {
+    icon: '🧹', title: 'Clean up', prompts: [
+      'Find and fix any typos and formatting mistakes.',
+      'Standardize all my scene headings.',
+      'Check for inconsistent character-name spellings.',
+    ],
+  },
+  {
+    icon: '💬', title: 'Dialogue & lines', prompts: [
+      'Punch up the dialogue in the latest scene.',
+      'Give me a stronger version of the last line.',
+      'This dialogue feels flat — tighten it.',
+    ],
+  },
+  {
+    icon: '📝', title: 'Get notes', prompts: [
+      'Give me honest notes on the script so far.',
+      "What's not working in the opening?",
+      "Is my protagonist's want vs. need clear?",
+    ],
+  },
+  {
+    icon: '💡', title: 'Brainstorm', prompts: [
+      'Give me five ideas for a twist here.',
+      'Suggest a compelling B-story.',
+      'What could a stronger opening image be?',
+    ],
+  },
+  {
+    icon: '🎭', title: 'Plot & character', prompts: [
+      'Are there any plot holes so far?',
+      'Help me deepen my main character.',
+      'Does the midpoint raise the stakes enough?',
+    ],
+  },
+]
+
+function PromptLibrary({ onPick }: { onPick: (p: string) => void }) {
+  return (
+    <div className="space-y-3">
+      {PROMPT_CATEGORIES.map(cat => (
+        <div key={cat.title}>
+          <div className="text-[11px] font-semibold text-neutral-400 mb-1.5">
+            <span className="mr-1">{cat.icon}</span>{cat.title}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {cat.prompts.map(p => (
+              <button
+                key={p}
+                onClick={() => onPick(p)}
+                className="text-left text-xs text-neutral-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 interface Props {
   project: Project
   docId: string
@@ -33,7 +104,15 @@ export default function CoWriterPanel({ project, docId, blocks, onInsert, onAppl
   const [error, setError] = useState<string | null>(null)
   const [needsAuth, setNeedsAuth] = useState(false)
   const [accepted, setAccepted] = useState<Set<string>>(new Set())
+  const [showPrompts, setShowPrompts] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const pickPrompt = (p: string) => {
+    setInput(p)
+    setShowPrompts(false)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -121,24 +200,9 @@ export default function CoWriterPanel({ project, docId, blocks, onInsert, onAppl
             <p className="mb-3">Sign in to use the co-writer — it needs your account to read this project.</p>
           </div>
         ) : messages.length === 0 ? (
-          <div className="text-neutral-500 text-sm mt-6 space-y-3">
-            <p className="text-neutral-300">Your co-writer has read this whole project. Try:</p>
-            <div className="space-y-1.5">
-              {[
-                'Find and fix any typos or formatting mistakes.',
-                'Where are the plot holes so far?',
-                "I'm stuck — what could happen next?",
-                'Suggest a stronger opening line.',
-              ].map(s => (
-                <button
-                  key={s}
-                  onClick={() => setInput(s)}
-                  className="block w-full text-left text-xs text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg px-3 py-2 transition-colors"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+          <div className="text-sm mt-2 space-y-4">
+            <p className="text-neutral-300">Your co-writer has read this whole project. Pick a starting point or just type your own:</p>
+            <PromptLibrary onPick={pickPrompt} />
           </div>
         ) : (
           messages.map((m, i) => (
@@ -163,9 +227,30 @@ export default function CoWriterPanel({ project, docId, blocks, onInsert, onAppl
       )}
 
       {!needsAuth && (
-        <div className="p-3 border-t border-white/10 shrink-0">
+        <div className="relative p-3 border-t border-white/10 shrink-0">
+          {showPrompts && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowPrompts(false)} />
+              <div className="absolute z-20 left-3 right-3 bottom-full mb-2 max-h-[55vh] overflow-y-auto bg-[#1a1a24] border border-white/10 rounded-2xl shadow-2xl p-3">
+                <PromptLibrary onPick={pickPrompt} />
+              </div>
+            </>
+          )}
           <div className="flex items-end gap-2">
+            <button
+              onClick={() => setShowPrompts(o => !o)}
+              className={[
+                'pressable rounded-xl w-[42px] h-[42px] flex items-center justify-center shrink-0 border transition-colors',
+                showPrompts
+                  ? 'bg-white/10 border-white/25 text-white'
+                  : 'border-white/10 text-neutral-400 hover:text-white hover:bg-white/5',
+              ].join(' ')}
+              title="Prompt ideas"
+            >
+              💡
+            </button>
             <textarea
+              ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => {
