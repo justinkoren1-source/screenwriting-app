@@ -261,22 +261,21 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
       text: UPPERCASE_TYPES.has(b.type) ? b.text.toUpperCase() : b.text,
     }))
     setBlocks(prev => {
-      const idx = prev.findIndex(b => b.id === activeId)
-      let next: Block[]
-      if (idx !== -1 && prev[idx].text.trim() === '') {
-        // Replace the empty active block
-        next = [...prev.slice(0, idx), ...newBlocks, ...prev.slice(idx + 1)]
-      } else {
-        const at = idx === -1 ? prev.length : idx + 1
-        next = [...prev.slice(0, at), ...newBlocks, ...prev.slice(at)]
-      }
+      // Append to the end of the script — co-writer suggestions are "what comes
+      // next," and while chatting the cursor isn't meaningfully in the script.
+      // If the script is just a trailing empty line, replace it so there's no gap.
+      const lastIdx = prev.length - 1
+      const next =
+        lastIdx >= 0 && prev[lastIdx].text.trim() === ''
+          ? [...prev.slice(0, lastIdx), ...newBlocks]
+          : [...prev, ...newBlocks]
       scheduleSave(next)
       return next
     })
     const lastId = newBlocks[newBlocks.length - 1].id
     setActiveId(lastId)
     setPendingFocusId(lastId)
-  }, [activeId, scheduleSave])
+  }, [scheduleSave])
 
   // ── Auto (CONT'D): same speaker continues after action in the same scene ──
 
