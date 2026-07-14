@@ -28,20 +28,37 @@ export interface ParsedInsert {
   blocks: { type: ElementType; text: string }[]
 }
 
-export type ContentPart =
-  | { type: 'prose'; text: string; insert?: undefined }
-  | { type: 'insert'; text?: undefined; insert: ParsedInsert }
+/** One proposed change to an existing numbered line. */
+export interface EditOp {
+  line: number
+  type?: ElementType
+  text?: string
+  remove?: boolean
+}
+export interface ParsedEdits {
+  ops: EditOp[]
+}
 
-/** Split streamed assistant text into prose spans and insert proposals. */
+export type ContentPart =
+  | { type: 'prose'; text: string }
+  | { type: 'insert'; insert: ParsedInsert }
+  | { type: 'edits'; edits: ParsedEdits }
+
+/** Split streamed assistant text into prose, insert proposals, and edit proposals. */
 export function parseAssistantContent(text: string): ContentPart[] {
   const parts: ContentPart[] = []
-  const re = /<insert>([\s\S]*?)<\/insert>/g
+  const re = /<(insert|edits)>([\s\S]*?)<\/\1>/g
   let last = 0
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push({ type: 'prose', text: text.slice(last, m.index) })
-    const blocks = parseInsertBody(m[1])
-    if (blocks.length) parts.push({ type: 'insert', insert: { blocks } })
+    if (m[1] === 'insert') {
+      const blocks = parseInsertBody(m[2])
+      if (blocks.length) parts.push({ type: 'insert', insert: { blocks } })
+    } else {
+      const ops = parseEditsBody(m[2])
+      if (ops.length) parts.push({ type: 'edits', edits: { ops } })
+    }
     last = re.lastIndex
   }
   if (last < text.length) parts.push({ type: 'prose', text: text.slice(last) })
@@ -64,12 +81,38 @@ function parseInsertBody(body: string): { type: ElementType; text: string }[] {
   return blocks
 }
 
+function parseEditsBody(body: string): EditOp[] {
+  const ops: EditOp[] = []
+  for (const raw of body.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const del = line.match(/^DELETE\s+(\d+)/i)
+    if (del) {
+      ops.push({ line: Number(del[1]), remove: true })
+      continue
+    }
+    // EDIT <n> | <TYPE or -> | <new full text>
+    const ed = line.match(/^EDIT\s+(\d+)\s*\|\s*([^|]*)\|\s*([\s\S]*)$/i)
+    if (ed) {
+      const n = Number(ed[1])
+      const label = ed[2].trim().toUpperCase().replace(/\s+/g, '_')
+      const type = label && label !== '-' ? LABEL_TO_TYPE[label] : undefined
+      const text = ed[3].trim()
+      if (n > 0 && (text || type)) ops.push({ line: n, type, text: text || undefined })
+    }
+  }
+  return ops
+}
+
 // ── Prompt assembly ──────────────────────────────────────────────────────────
 
+// Number every line by its 1-based position in the full block array so the
+// model can target exact lines for edits (numbers match the editor's indices).
 function blocksToScript(blocks: Block[]): string {
   return blocks
-    .filter(b => b.text.trim())
-    .map(b => `[${b.type}] ${b.text}`)
+    .map((b, i) => ({ n: i + 1, b }))
+    .filter(x => x.b.text.trim())
+    .map(x => `[${x.n}] (${x.b.type}) ${x.b.text}`)
     .join('\n')
 }
 
@@ -127,7 +170,21 @@ export function buildSystemPrompt(opts: {
     `CHARACTER: MAYA`,
     `DIALOG: You said nine. It's almost noon.`,
     `</insert>`,
-    `- Only use <insert> for content meant to go INTO the script. Keep discussion, analysis, and questions as normal prose. Never put your explanation inside an <insert> block.`,
+    `- Only use <insert> for BRAND-NEW content added to the end of the script. Keep discussion, analysis, and questions as normal prose. Never put your explanation inside an <insert> block.`,
+    ``,
+    `Fixing or changing EXISTING lines (typos, punctuation, a misspelled character name, the wrong element type, standardizing a scene heading, or removing a line):`,
+    `- The script below is numbered [1], [2], [3]… Use those numbers to target the exact lines.`,
+    `- Emit an <edits> block, one operation per line:`,
+    `  · Change a line:  EDIT <number> | <TYPE or -> | <the corrected full line>   (TYPE = one of the element types above, or "-" to keep the line's current type)`,
+    `  · Remove a line:  DELETE <number>`,
+    `- Example:`,
+    `<edits>`,
+    `EDIT 3 | - | CLAIRE`,
+    `EDIT 12 | action | Claire sits for an interview, arms crossed.`,
+    `DELETE 40`,
+    `</edits>`,
+    `- Put ONLY the lines you are actually changing inside <edits>. NEVER reprint the whole script, and never paste a corrected version into the chat as prose — the writer approves your <edits> and the app applies them in place.`,
+    `- Use <edits> to change existing lines; use <insert> only to add new lines at the end.`,
     ``,
     ...(briefText
       ? [

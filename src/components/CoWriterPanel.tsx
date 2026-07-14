@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { getChatMessages, type ChatMessage } from '@/lib/storage'
-import { parseAssistantContent } from '@/lib/coWriter'
-import type { ElementType, Project } from '@/lib/types'
+import { parseAssistantContent, type EditOp } from '@/lib/coWriter'
+import type { Block, ElementType, Project } from '@/lib/types'
 
 const ELEMENT_LABEL: Record<ElementType, string> = {
   'scene-header': 'Scene',
@@ -20,11 +20,13 @@ const ELEMENT_LABEL: Record<ElementType, string> = {
 interface Props {
   project: Project
   docId: string
+  blocks: Block[]
   onInsert: (blocks: { type: ElementType; text: string }[]) => void
+  onApplyEdits: (ops: EditOp[]) => void
   onClose: () => void
 }
 
-export default function CoWriterPanel({ project, docId, onInsert, onClose }: Props) {
+export default function CoWriterPanel({ project, docId, blocks, onInsert, onApplyEdits, onClose }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -123,9 +125,9 @@ export default function CoWriterPanel({ project, docId, onInsert, onClose }: Pro
             <p className="text-neutral-300">Your co-writer has read this whole project. Try:</p>
             <div className="space-y-1.5">
               {[
+                'Find and fix any typos or formatting mistakes.',
                 'Where are the plot holes so far?',
                 "I'm stuck — what could happen next?",
-                'Help me make Maya feel more desperate.',
                 'Suggest a stronger opening line.',
               ].map(s => (
                 <button
@@ -146,6 +148,8 @@ export default function CoWriterPanel({ project, docId, onInsert, onClose }: Pro
               streaming={busy && i === messages.length - 1 && m.role === 'assistant'}
               accepted={accepted}
               onAccept={acceptInsert}
+              blocks={blocks}
+              onApplyEdits={onApplyEdits}
               msgIndex={i}
             />
           ))
@@ -200,12 +204,14 @@ export default function CoWriterPanel({ project, docId, onInsert, onClose }: Pro
 }
 
 function Message({
-  message, streaming, accepted, onAccept, msgIndex,
+  message, streaming, accepted, onAccept, blocks, onApplyEdits, msgIndex,
 }: {
   message: ChatMessage
   streaming: boolean
   accepted: Set<string>
   onAccept: (key: string, blocks: { type: ElementType; text: string }[]) => void
+  blocks: Block[]
+  onApplyEdits: (ops: EditOp[]) => void
   msgIndex: number
 }) {
   if (message.role === 'user') {
@@ -218,12 +224,14 @@ function Message({
     )
   }
 
-  // Assistant: split into prose and insert proposals.
-  // Suppress a half-streamed, not-yet-closed <insert> fragment.
+  // Assistant: split into prose, insert proposals, and edit proposals.
+  // Suppress a half-streamed, not-yet-closed <insert>/<edits> fragment.
   let content = message.content
   if (streaming) {
-    const open = content.lastIndexOf('<insert>')
-    const close = content.lastIndexOf('</insert>')
+    const openIns = content.lastIndexOf('<insert>')
+    const openEd = content.lastIndexOf('<edits>')
+    const open = Math.max(openIns, openEd)
+    const close = Math.max(content.lastIndexOf('</insert>'), content.lastIndexOf('</edits>'))
     if (open > close) content = content.slice(0, open) + '\n*(drafting a suggestion…)*'
   }
   const parts = parseAssistantContent(content)
@@ -261,7 +269,10 @@ function Message({
             </div>
           )
         }
-        const text = (p.text ?? '').trim()
+        if (p.type === 'edits') {
+          return <EditCard key={i} ops={p.edits.ops} blocks={blocks} onApply={onApplyEdits} />
+        }
+        const text = (p.type === 'prose' ? p.text : '').trim()
         if (!text) return null
         return (
           <div key={i} className="text-sm text-neutral-200 whitespace-pre-wrap leading-relaxed">
@@ -272,6 +283,85 @@ function Message({
       {streaming && parts.length === 0 && (
         <div className="text-sm text-neutral-500">…</div>
       )}
+    </div>
+  )
+}
+
+function EditCard({
+  ops, blocks, onApply,
+}: {
+  ops: EditOp[]
+  blocks: Block[]
+  onApply: (ops: EditOp[]) => void
+}) {
+  // Snapshot the "before" text for each edit once, so it stays stable after applying
+  const [before] = useState<string[]>(() => ops.map(op => blocks[op.line - 1]?.text ?? ''))
+  const [rejected, setRejected] = useState<Set<number>>(new Set())
+  const [applied, setApplied] = useState(false)
+
+  const remaining = ops.map((op, i) => ({ op, i })).filter(x => !rejected.has(x.i))
+
+  return (
+    <div className="border border-cyan-400/30 bg-cyan-500/5 rounded-xl overflow-hidden">
+      <div className="px-3 py-2 text-[11px] font-semibold text-cyan-300/80 uppercase tracking-wider border-b border-cyan-400/20">
+        Proposed edits
+      </div>
+      <div className="divide-y divide-white/5">
+        {ops.map((op, i) => {
+          const isRejected = rejected.has(i)
+          return (
+            <div key={i} className={`px-3 py-2 text-xs ${isRejected ? 'opacity-40' : ''}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 font-mono">
+                  {op.remove ? (
+                    <div>
+                      <span className="text-red-300/80 mr-1.5">Delete</span>
+                      <span className="text-neutral-500 line-through">{before[i] || `line ${op.line}`}</span>
+                    </div>
+                  ) : (
+                    <>
+                      {op.type && <span className="text-cyan-300/60 mr-1.5">→ {ELEMENT_LABEL[op.type]}</span>}
+                      {before[i] && (
+                        <div className="text-neutral-500 line-through">{before[i]}</div>
+                      )}
+                      <div className="text-emerald-300">{op.text}</div>
+                    </>
+                  )}
+                </div>
+                {!applied && (
+                  <button
+                    onClick={() =>
+                      setRejected(prev => {
+                        const next = new Set(prev)
+                        if (next.has(i)) next.delete(i)
+                        else next.add(i)
+                        return next
+                      })
+                    }
+                    className="shrink-0 text-neutral-500 hover:text-white text-[11px] px-1"
+                    title={isRejected ? 'Include' : 'Skip this one'}
+                  >
+                    {isRejected ? '↩︎' : '✕'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="border-t border-cyan-400/20">
+        {applied ? (
+          <span className="block text-center text-xs text-emerald-400 py-2">✓ Applied to script</span>
+        ) : (
+          <button
+            onClick={() => { onApply(remaining.map(x => x.op)); setApplied(true) }}
+            disabled={remaining.length === 0}
+            className="w-full text-xs text-white bg-cyan-500/20 hover:bg-cyan-500/30 disabled:opacity-40 py-2 transition-colors font-medium"
+          >
+            Apply {remaining.length} {remaining.length === 1 ? 'change' : 'changes'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

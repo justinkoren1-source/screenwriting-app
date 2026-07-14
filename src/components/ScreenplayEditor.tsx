@@ -6,6 +6,7 @@ import type { Block, Doc, ElementType, Project } from '@/lib/types'
 import { isEpisode, episodeCode } from '@/lib/types'
 import { saveDocument, saveProjectMeta } from '@/lib/storage'
 import { paginate, characterNames, cleanCharacterName } from '@/lib/screenplay'
+import type { EditOp } from '@/lib/coWriter'
 import { exportPdf } from '@/lib/pdfExport'
 import CoWriterPanel from './CoWriterPanel'
 
@@ -275,6 +276,34 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
     const lastId = newBlocks[newBlocks.length - 1].id
     setActiveId(lastId)
     setPendingFocusId(lastId)
+  }, [scheduleSave])
+
+  // Apply AI-proposed edits to existing lines (by 1-based line number)
+  const applyEdits = useCallback((ops: EditOp[]) => {
+    if (!ops.length) return
+    setBlocks(prev => {
+      const removeIds = new Set<string>()
+      const patches = new Map<string, { type?: ElementType; text?: string }>()
+      ops.forEach(op => {
+        const b = prev[op.line - 1]
+        if (!b) return
+        if (op.remove) removeIds.add(b.id)
+        else patches.set(b.id, { type: op.type, text: op.text })
+      })
+      let next = prev
+        .map(b => {
+          const p = patches.get(b.id)
+          if (!p) return b
+          const type = p.type ?? b.type
+          const text =
+            p.text != null ? (UPPERCASE_TYPES.has(type) ? p.text.toUpperCase() : p.text) : b.text
+          return { ...b, type, text }
+        })
+        .filter(b => !removeIds.has(b.id))
+      if (next.length === 0) next = [{ id: crypto.randomUUID(), type: 'scene-header', text: '' }]
+      scheduleSave(next)
+      return next
+    })
   }, [scheduleSave])
 
   // ── Auto (CONT'D): same speaker continues after action in the same scene ──
@@ -691,7 +720,9 @@ export default function ScreenplayEditor({ project: initial, doc }: { project: P
           <CoWriterPanel
             project={initial}
             docId={doc.id}
+            blocks={blocks}
             onInsert={insertBlocks}
+            onApplyEdits={applyEdits}
             onClose={() => setCoWriterOpen(false)}
           />
         )}
